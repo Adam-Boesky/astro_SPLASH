@@ -12,7 +12,35 @@ LOG = get_clean_logger(logger_name = Path(__file__).name)
 PROJECT = 'Astronomy 98'
 with open('/Users/adamboesky/Research/ay98/sweep_config.yaml', 'r') as f:
     SWEEP_CONFIG = yaml.safe_load(f)
+SWEEP_BASH_SCRIPT = """
+#!/bin/bash
 
+#SBATCH -c 48                               # Number of cores (-c)
+#SBATCH --job-name=%s                       # This is the name of your job
+#SBATCH --mem=184G                          # Memory pool for all cores (see also --mem-per-cpu)
+#SBATCH -t 0-12:00                          # Runtime in D-HH:MM, minimum of 10 minutes
+
+# Paths to STDOUT or STDERR files should be absolute or relative to current working directory
+#SBATCH -o myoutput_%j.out                  # File to which STDOUT will be written, %j inserts jobid
+#SBATCH -e myerrors_%j.err                  # File to which STDERR will be written, %j inserts jobid
+
+#SBATCH -p test
+
+# Remember:
+# The variable $TMPDIR points to the local hard disks in the computing nodes.
+# The variable $HOME points to your home directory.
+# The variable $SLURM_JOBID stores the ID number of your job.
+
+
+# Load modules
+#################################
+module load python/3.10.12-fasrc01
+conda activate ay98
+
+# Commands
+#############################
+wandb agent %s
+"""
 # {
 #                 'method': 'grid',
 #                 'metric': {'goal': 'minimize', 'name': 'loss'},
@@ -104,8 +132,17 @@ def train(config=None):
 
 def tune_parameters():
     """Use grid search to tune hyperparameters."""
+    # Make sweep and set sweep ID environment variable
     sweep_id = wandb.sweep(SWEEP_CONFIG, project=PROJECT)
-    wandb.agent(sweep_id, function=train)
+
+    # Submit a number of agents to complete the sweep
+    for i in range(15):
+        job_name = f'{sweep_id}_agent_{i}'
+        sbatchFile = open('submit_agent.sh', 'w')
+        LOG.info('Submitting agent %i', i)
+        sbatchFile.write(SWEEP_BASH_SCRIPT % (job_name, sweep_id))
+        sbatchFile.close()
+    # wandb.agent(sweep_id, function=train)
 
 
 if __name__ == '__main__':
