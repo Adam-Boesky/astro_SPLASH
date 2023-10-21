@@ -17,13 +17,22 @@ from collections import OrderedDict
 from sklearn.model_selection import train_test_split
 from sklearn.impute import KNNImputer
 
-LOG = get_clean_logger(logger_name = Path(__file__).name)
-VERBOSE = False
+LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
+VERBOSE = False                 # Whether logging should be verbose
+CLUSTER = False                 # Whether we are on the cluster or not
+
+# Parameters for skipping different parts of this file
 SKIP_TRAINING = False
 SKIP_PREPROCESSING = False
 SKIP_PLOTTING = False
+
+# Paths to different data
 PATH_TO_DATA = '/Volumes/T7/ay_98_data/Zou_data'
 PATH_TO_TRAINING_DATA = 'Volumes/T7/ay_98_data/pickled_data'
+if CLUSTER:
+    PATH_TO_CLEAN_DATA = '/n/holystore01/LABS/berger_lab/Users/aboesky/weird_galaxy_data'
+else:
+    PATH_TO_CLEAN_DATA = '/Users/adamboesky/Research/ay98/clean_data'
 
 torch.manual_seed(22)
 
@@ -245,7 +254,7 @@ def load_and_preprocess():
     """Load and preprocess our data."""
     ######################## IMPORT DATA ########################
     LOG.info('Importing photometry data')
-    with open(f'/Users/adamboesky/Research/ay98/preprocessing/clean_data/all_photometry.pkl', 'rb') as f:
+    with open(os.path.join(PATH_TO_CLEAN_DATA, 'all_photometry.pkl'), 'rb') as f:
         all_photo = pickle.load(f)
     photo = all_photo['data']
     photo_err = all_photo['data_err']
@@ -254,7 +263,7 @@ def load_and_preprocess():
     photo_err = np.abs(photo_err / (photo * np.log(10)))
     photo = np.log10(photo)
 
-    with open(f'/Users/adamboesky/Research/ay98/preprocessing/clean_data/all_cat.pkl', 'rb') as f:
+    with open(os.path.join(PATH_TO_CLEAN_DATA, 'all_cat.pkl'), 'rb') as f:
         all_cat = pickle.load(f)
     cat = all_cat['data']
     LOG.info('Fixing the error for %i objects', np.sum(all_cat['data_err'][:, 2] == 0.01))
@@ -447,7 +456,7 @@ def train_and_store_nn():
     if not SKIP_PLOTTING:
         LOG.info('Plotting')
         if SKIP_TRAINING:
-            with open('/Users/adamboesky/Research/ay98/preprocessing/clean_data/most_recent_data.pkl', 'rb') as f:
+            with open(os.path.join(PATH_TO_CLEAN_DATA, 'most_recent_data.pkl'), 'rb') as f:
                 (all_cat, all_photo, photo_train, photo_test, cat_train, cat_test, photo_err_train, photo_err_test, cat_err_train, cat_err_test, photo_norm, photo_mean, photo_std, photo_err_norm, cat_norm, cat_mean, cat_std, cat_err_norm) = pickle.load(f)
 
         model.eval()
