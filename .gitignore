@@ -3,3 +3,6 @@ __pycache__/
 *.log
 wandb/
 cluster_logs/
+*.err
+*.out
+

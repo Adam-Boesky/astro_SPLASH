@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH -c 12                                       # Number of cores (-c)
-#SBATCH --job-name=nvzbx8hr_agent_1                       # This is the name of your job
-#SBATCH --mem=56G                                  # Memory pool for all cores (see also --mem-per-cpu)
+#SBATCH --job-name=i33uxph0_agent_1                       # This is the name of your job
+#SBATCH --mem=56G                                   # Memory pool for all cores (see also --mem-per-cpu)
 #SBATCH -t 0-00:10                                  # Runtime in D-HH:MM, minimum of 10 minutes
 
 # Paths to STDOUT or STDERR files should be absolute or relative to current working directory
@@ -23,9 +23,9 @@ export WANDB_API_KEY=6ecd8ea5ceb5a64219d98bc34ce67af0904f2be8
 
 # Load modules
 #################################
-module load python/3.10.12-fasrc01
-source activate pt2.1.0_cuda12.1
+
 
 # Commands
 #############################
-wandb agent nvzbx8hr
+wandb login
+wandb agent i33uxph0 --project "Astronomy 98"
