@@ -5,4 +5,5 @@ wandb/
 cluster_logs/
 *.err
 *.out
-
+/preprocessing/transients*/
+/preprocessing/database/
