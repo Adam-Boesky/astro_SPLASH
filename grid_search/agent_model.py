@@ -19,6 +19,7 @@ LOG = get_clean_logger(logger_name = Path(__file__).name)
 def train(config=None):
     """Training function to call in our weights and biases grid search."""
     # Load in data
+    LOG.info('Load data!!!')
     all_cat, all_photo, photo_train, photo_test, cat_train, cat_test, photo_err_train, photo_err_test, cat_err_train, \
             cat_err_test, photo_norm, photo_mean, photo_std, photo_err_norm, cat_norm, cat_mean, cat_std, cat_err_norm = load_and_preprocess()
     

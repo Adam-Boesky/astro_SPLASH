@@ -1,6 +1,5 @@
 """Grid search to tune hyperparameters"""
 import sys
-import time
 from subprocess import Popen, PIPE
 import click
 
@@ -76,8 +75,11 @@ export WANDB_API_KEY=6ecd8ea5ceb5a64219d98bc34ce67af0904f2be8
 
 # Commands
 #############################
+echo 'Logging in to wandb'
 wandb login
-wandb agent {sweep_id} --project "{project}"
+
+echo 'Unleashing agent'
+wandb agent {sweep_id} --project {project}
 """
 
 @click.command()
@@ -129,11 +131,9 @@ def tune_parameters(config_yaml, train_file, project_name):
     config_dict['program'] = train_file
 
     sweep_id = wandb.sweep(config_dict, project=project_name)
-
-    time.sleep(10)
     
     ps = []
-    for i in range(2):
+    for i in range(1):
         LOG.info('Submitting agent %i', i)
         job_name = f'{sweep_id}_agent_{i}'
         sbatchFile = open('submit_agent.sh', 'w')
@@ -142,7 +142,7 @@ def tune_parameters(config_yaml, train_file, project_name):
 
         # Open a pipe to the sbatch command.
         sbatch_command = f'sbatch --wait submit_agent.sh'
-        proc = Popen(sbatch_command, shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True)
+        proc = Popen(sbatch_command, shell=True)
         ps.append(proc)
 
     exit_codes = [p.wait() for p in ps]  # wait for processes to finish

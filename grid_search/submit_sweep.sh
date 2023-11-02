@@ -37,8 +37,8 @@ echo 'config:' $config_yaml
 train_file='/n/home04/aboesky/berger/Weird_Galaxies/grid_search/agent_model.py'
 echo 'train_file:' $train_file
 
-project_name='Astronomy 98'
+project_name='Astronomy_98'
 echo 'project_name:' $project_name
 
 echo 'running script'
-python initialize_sweep.py $config_yaml $train_file "$project_name"
+python initialize_sweep.py $config_yaml $train_file $project_name

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH -c 12                                       # Number of cores (-c)
-#SBATCH --job-name=i33uxph0_agent_1                       # This is the name of your job
+#SBATCH --job-name=y2n0sxq8_agent_0                       # This is the name of your job
 #SBATCH --mem=56G                                   # Memory pool for all cores (see also --mem-per-cpu)
 #SBATCH -t 0-00:10                                  # Runtime in D-HH:MM, minimum of 10 minutes
 
@@ -27,5 +27,8 @@ export WANDB_API_KEY=6ecd8ea5ceb5a64219d98bc34ce67af0904f2be8
 
 # Commands
 #############################
+echo 'Logging in to wandb'
 wandb login
-wandb agent i33uxph0 --project "Astronomy 98"
+
+echo 'Unleashing agent'
+wandb agent y2n0sxq8 --project Astronomy_98
