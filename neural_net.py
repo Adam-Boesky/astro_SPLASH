@@ -1,9 +1,7 @@
 import os
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
-import h5py as h5
 import torch
 import pickle
 
@@ -11,9 +9,7 @@ from pathlib import Path
 from logger import get_clean_logger
 from typing import List, Union, Callable, Optional
 from torch import nn
-from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR
 from astropy.io import fits
-from collections import OrderedDict
 from sklearn.model_selection import train_test_split
 from sklearn.impute import KNNImputer
 
@@ -170,7 +166,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.xlim((center - dist_width*0.75, center + dist_width*1.25))
     scatter_xlims = plt.xlim()
     scatter_ylims = plt.ylim()
-    plt.savefig(f'ay98/real_v_pred_scatter_{filename_postfix}.png')
+    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/real_v_pred_scatter_{filename_postfix}.png')
 
     # Real v pred heatmaps
     heatmap, xedges, yedges = np.histogram2d(real, pred, range=[scatter_xlims, scatter_ylims], bins=(100, 100))
@@ -181,7 +177,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.colorbar(label="Log(Count)")
     plt.xlabel(fr'Real {param}')
     plt.ylabel(fr'Predicted {param}')
-    plt.savefig(f'ay98/real_v_pred_heatmap_{filename_postfix}.png')
+    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/real_v_pred_heatmap_{filename_postfix}.png')
 
     # Real v pred histograms
     plt.figure(figsize=(10,5))
@@ -190,7 +186,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.ylabel('Frequency')
     plt.xlabel(param)
     plt.legend()
-    plt.savefig(f'ay98/real_v_pred_hist_{filename_postfix}.png')
+    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/real_v_pred_hist_{filename_postfix}.png')
 
     # Fractional error histogram
     plt.figure(figsize=(10,5))
@@ -201,7 +197,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.ylabel('Frequency')
     # ind = np.argpartition(frac_err, -10)[-10:]
     # LOG.info('max val is %s', frac_err[ind])
-    plt.savefig(f'ay98/frac_err_{filename_postfix}.png')
+    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/frac_err_{filename_postfix}.png')
 
 
 def get_np_data_from_fits(filepath: Union[str, Path], columns: list, transforms: List[Union[None, Callable]], vector_key: Optional[str] = None):
@@ -374,11 +370,21 @@ def train_and_store_nn():
 
 
     ######################## MAKE NN, LOSS FN, AND OPTIMIZER  ########################
+    # According to results.ipynb the best hyperparams are:
+    # batch_size, nodes_per_layer, num_linear_output_layers, learning_rate
+    # [4096, [18, 15, 12, 9, 6, 4], 3, 0.01]
+
+    # Training parameters
+    n_epochs = 1000
+    nodes_per_layer = [18, 15, 12, 9, 6, 4]
+    num_linear_output_layers = 3
+    learning_rate = 0.01
+    batch_size = 4096
     torch.set_default_dtype(torch.float64)
-    model = get_model(num_inputs=18, num_outputs=3, nodes_per_layer=[18, 13,  8,  3], num_linear_output_layers=2)#BEST---nodes_per_layer=[18,12,7,4]) # without z limit [18,13,10,7,4]
+    model = get_model(num_inputs=18, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)#BEST---nodes_per_layer=[18,12,7,4]) # without z limit [18,13,10,7,4]
     loss_fn = CustomLoss()
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     # step_scheduler = MultiStepLR(optimizer, milestones=[200, 300, 350], gamma=0.1)
 
@@ -388,11 +394,6 @@ def train_and_store_nn():
 
     ######################## TRAIN ########################
     if not SKIP_TRAINING:
-        # Training parameters
-        n_epochs = 400
-        # batches_per_epoch = 50
-        # batch_size = int(len(cat_train) / batches_per_epoch)
-        batch_size = 20186
         batches_per_epoch = int(len(cat_train) / batch_size)
         LOG.info('Batch Size = %i', batch_size)
 
@@ -425,7 +426,6 @@ def train_and_store_nn():
                 num_hash = int(40 * i / batches_per_epoch)
                 if VERBOSE:
                     LOG.info('Batch %i/%i |' +  num_hash * '#' + ' ' * (40 - num_hash) + '|', i + 1, batches_per_epoch)
-            # step_scheduler.step()
             avg_train_loss = (epoch_loss / batches_per_epoch)
             model.eval()
             losses_per_epoch['train'].append(avg_train_loss)
@@ -438,7 +438,7 @@ def train_and_store_nn():
             if test_loss < best_loss:
                 best_loss = test_loss
                 best_epoch = epoch
-                checkpoint(model, "ay98/best_model.pkl")
+                checkpoint(model, "/n/home04/aboesky/berger/Weird_Galaxies/best_model.pkl")
 
             # Early stopping
             elif epoch - best_epoch >= 50:
@@ -446,10 +446,10 @@ def train_and_store_nn():
                 break
 
         # Plot training performance
-        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='ay98/loss_v_epoch.png')
+        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/n/home04/aboesky/berger/Weird_Galaxies/loss_v_epoch.png')
 
     # Load best model
-    resume(model, 'ay98/best_model.pkl')
+    resume(model, '/n/home04/aboesky/berger/Weird_Galaxies/best_model.pkl')
 
 
     ######################## CHECK RESULTS AND STORE MODEL ########################
