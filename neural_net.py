@@ -166,7 +166,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.xlim((center - dist_width*0.75, center + dist_width*1.25))
     scatter_xlims = plt.xlim()
     scatter_ylims = plt.ylim()
-    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/real_v_pred_scatter_{filename_postfix}.png')
+    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/training_plots/real_v_pred_scatter_{filename_postfix}.png')
 
     # Real v pred heatmaps
     heatmap, xedges, yedges = np.histogram2d(real, pred, range=[scatter_xlims, scatter_ylims], bins=(100, 100))
@@ -177,7 +177,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.colorbar(label="Log(Count)")
     plt.xlabel(fr'Real {param}')
     plt.ylabel(fr'Predicted {param}')
-    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/real_v_pred_heatmap_{filename_postfix}.png')
+    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/training_plots/real_v_pred_heatmap_{filename_postfix}.png')
 
     # Real v pred histograms
     plt.figure(figsize=(10,5))
@@ -186,7 +186,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.ylabel('Frequency')
     plt.xlabel(param)
     plt.legend()
-    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/real_v_pred_hist_{filename_postfix}.png')
+    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/training_plots/real_v_pred_hist_{filename_postfix}.png')
 
     # Fractional error histogram
     plt.figure(figsize=(10,5))
@@ -197,7 +197,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.ylabel('Frequency')
     # ind = np.argpartition(frac_err, -10)[-10:]
     # LOG.info('max val is %s', frac_err[ind])
-    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/frac_err_{filename_postfix}.png')
+    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/training_plots/frac_err_{filename_postfix}.png')
 
 
 def get_np_data_from_fits(filepath: Union[str, Path], columns: list, transforms: List[Union[None, Callable]], vector_key: Optional[str] = None):
@@ -446,7 +446,7 @@ def train_and_store_nn():
                 break
 
         # Plot training performance
-        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/n/home04/aboesky/berger/Weird_Galaxies/loss_v_epoch.png')
+        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/n/home04/aboesky/berger/Weird_Galaxies/training_plots/loss_v_epoch.png')
 
     # Load best model
     resume(model, '/n/home04/aboesky/berger/Weird_Galaxies/best_model.pkl')
