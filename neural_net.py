@@ -129,7 +129,7 @@ def plot_training_loss(losses: Union[list, np.ndarray], test_losses: np.ndarray 
         plt.savefig('/'.join(fname_list))
 
 
-def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[list, np.ndarray], param: str, real_err: Optional[Union[torch.Tensor, np.ndarray]] = None, pred_err: Optional[Union[torch.Tensor, np.ndarray]] = None, filename_postfix: str = ''):
+def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[list, np.ndarray], param: str, real_err: Optional[Union[torch.Tensor, np.ndarray]] = None, pred_err: Optional[Union[torch.Tensor, np.ndarray]] = None, plot_dirname: str = '', filename_postfix: str = ''):
     """Plots the real value versus the predicted value of a given parameter"""
     plt.figure(figsize=(10,5))
     if isinstance(real, torch.Tensor):
@@ -166,7 +166,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.xlim((center - dist_width*0.75, center + dist_width*1.25))
     scatter_xlims = plt.xlim()
     scatter_ylims = plt.ylim()
-    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/training_plots/real_v_pred_scatter_{filename_postfix}.png')
+    plt.savefig(f'{plot_dirname}/real_v_pred_scatter_{filename_postfix}.png')
 
     # Real v pred heatmaps
     heatmap, xedges, yedges = np.histogram2d(real, pred, range=[scatter_xlims, scatter_ylims], bins=(100, 100))
@@ -177,7 +177,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.colorbar(label="Log(Count)")
     plt.xlabel(fr'Real {param}')
     plt.ylabel(fr'Predicted {param}')
-    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/training_plots/real_v_pred_heatmap_{filename_postfix}.png')
+    plt.savefig(f'{plot_dirname}/real_v_pred_heatmap_{filename_postfix}.png')
 
     # Real v pred histograms
     plt.figure(figsize=(10,5))
@@ -186,7 +186,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.ylabel('Frequency')
     plt.xlabel(param)
     plt.legend()
-    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/training_plots/real_v_pred_hist_{filename_postfix}.png')
+    plt.savefig(f'{plot_dirname}/real_v_pred_hist_{filename_postfix}.png')
 
     # Fractional error histogram
     plt.figure(figsize=(10,5))
@@ -197,7 +197,7 @@ def plot_real_v_preds(real: Union[list, np.ndarray, torch.Tensor], pred: Union[l
     plt.ylabel('Frequency')
     # ind = np.argpartition(frac_err, -10)[-10:]
     # LOG.info('max val is %s', frac_err[ind])
-    plt.savefig(f'/n/home04/aboesky/berger/Weird_Galaxies/training_plots/frac_err_{filename_postfix}.png')
+    plt.savefig(f'{plot_dirname}/frac_err_{filename_postfix}.png')
 
 
 def get_np_data_from_fits(filepath: Union[str, Path], columns: list, transforms: List[Union[None, Callable]], vector_key: Optional[str] = None):
@@ -244,53 +244,6 @@ class CustomLoss(nn.Module):
 def ab_mag_to_flux(AB_mag: np.ndarray) -> np.ndarray:
     """Convert AB magnitude to flux"""
     return np.exp((AB_mag - 8.9) / -2.5) / 1000
-
-
-def load_and_preprocess():
-    """Load and preprocess our data."""
-    ######################## IMPORT DATA ########################
-    LOG.info('Importing photometry data')
-    with open(os.path.join(PATH_TO_CLEAN_DATA, 'all_photometry.pkl'), 'rb') as f:
-        all_photo = pickle.load(f)
-    photo = all_photo['data']
-    photo_err = all_photo['data_err']
-
-    # Take log of the fluxes to make the distributions better
-    photo_err = np.abs(photo_err / (photo * np.log(10)))
-    photo = np.log10(photo)
-
-    with open(os.path.join(PATH_TO_CLEAN_DATA, 'all_cat.pkl'), 'rb') as f:
-        all_cat = pickle.load(f)
-    cat = all_cat['data']
-    LOG.info('Fixing the error for %i objects', np.sum(all_cat['data_err'][:, 2] == 0.01))
-    all_cat['data_err'][:, 2][all_cat['data_err'][:, 2] == 0.01] = 0.001 # Drop the spectroscopic errors down from the already low error
-    cat_err = all_cat['data_err']
-
-    LOG.info('Importing photometry data')
-    # Filter out z>1
-    z_local_mask = cat[:, 2] <= 1
-    photo = photo[z_local_mask]
-    photo_err = photo_err[z_local_mask]
-    cat = cat[z_local_mask]
-    cat_err = cat_err[z_local_mask]
-
-
-    ######################## PRE PROCESSING ########################
-    # Filter out nans
-    nan_mask = np.isnan(cat).any(axis=1)
-    photo_norm, photo_mean, photo_std, photo_err_norm = normalize_arr(photo[~nan_mask], errors=photo_err[~nan_mask])
-    cat_norm, cat_mean, cat_std, cat_err_norm = normalize_arr(cat[~nan_mask], errors=cat_err[~nan_mask])
-    print('HEEERRRREE', cat_norm)
-    print(cat_mean)
-    LOG.info('Photo stats:\n \tmean = %s\n \tstd = %s', photo_mean, photo_std)
-    LOG.info('Catalog stats:\n \tmean = %s\n \tstd = %s', cat_mean, cat_std)
-    LOG.info('Length = %i', len(photo))
-
-    # Split train and test sets
-    photo_train, photo_test, cat_train, cat_test, photo_err_train, photo_err_test, cat_err_train, cat_err_test = \
-        train_test_split(photo_norm, cat_norm, photo_err_norm, cat_err_norm, shuffle=True, test_size=0.2, random_state=22)
-
-    return all_cat, all_photo, photo_train, photo_test, cat_train, cat_test, photo_err_train, photo_err_test, cat_err_train, cat_err_test, photo_norm, photo_mean, photo_std, photo_err_norm, cat_norm, cat_mean, cat_std, cat_err_norm
 
 
 def train_and_store_nn():
