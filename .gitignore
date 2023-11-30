@@ -7,3 +7,4 @@ cluster_logs/
 *.out
 /preprocessing/transients*/
 /preprocessing/database/
+.vscode/

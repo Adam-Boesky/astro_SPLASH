@@ -1,6 +1,7 @@
 """Pytho script used to write the yaml config file for sweeps."""
 import yaml
 
+
 def write_config():
     """Function that writes a config yaml file."""
     config = {

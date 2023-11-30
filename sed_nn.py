@@ -1,12 +1,15 @@
 import os
-import torch
 import pickle
-import numpy as np
-
 from pathlib import Path
+
+import numpy as np
+import torch
 from sklearn.model_selection import train_test_split
-from neural_net import (normalize_arr, get_model, get_tensor_batch, checkpoint, resume, plot_training_loss, plot_real_v_preds, CustomLoss)
+
 from logger import get_clean_logger
+from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch,
+                        normalize_arr, plot_real_v_preds, plot_training_loss,
+                        resume)
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose
@@ -64,8 +67,15 @@ def load_and_preprocess():
     LOG.info('Catalog stats:\n \tmean = %s\n \tstd = %s', cat_mean, cat_std)
     LOG.info('Length = %i', len(photo))
 
-    # Set zero errors to small number
-    photo_err_norm[photo_err_norm == 0] = 0.01
+    # Deal with upper limit fluxes
+    # upper_limit_mask = 
+    # LOG.info('%s    and     %s', photo_err_norm.shape, upper_limit_mask.shape)
+    for j in range(photo_err_norm.shape[1]):
+        mask = photo_err_norm[:, j] == 0
+        photo_err_norm[:, j][mask] = np.abs(photo_norm[:, j][mask])
+        photo_norm[:, j][mask] = 0.01
+    # photo_err_norm[photo_err_norm == 0] = photo_norm
+    # photo_norm[photo_err_norm == 0] = 0.01 ### TODO: MAKE BIG -- set error to flux. if upper limit, set flux to 0 and uncertainty to flux
 
     # Split train and test sets
     photo_train, photo_test, photo_err_train, photo_err_test = \

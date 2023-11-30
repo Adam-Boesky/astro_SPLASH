@@ -1,20 +1,21 @@
 """Grid search to tune hyperparameters"""
-import os
-import sys
 import ast
-import shutil
 import datetime
+import os
+import shutil
+import sys
 
 sys.path.append('/n/home04/aboesky/berger/Weird_Galaxies')
 
-import torch
 import pickle
-
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import torch
+
 from logger import get_clean_logger
-from neural_net import load_and_preprocess, get_model, get_tensor_batch, checkpoint, resume, CustomLoss
+from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch,
+                        load_and_preprocess, resume)
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)
 

@@ -1,10 +1,12 @@
 import os
-import torch
 import pickle
-
 from pathlib import Path
-from neural_net import (get_model, get_tensor_batch, checkpoint, resume, plot_training_loss, plot_real_v_preds, CustomLoss)
+
+import torch
+
 from logger import get_clean_logger
+from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch,
+                        plot_real_v_preds, plot_training_loss, resume)
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose

@@ -1,17 +1,17 @@
 import os
+import pickle
+from pathlib import Path
+from typing import Callable, List, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import pickle
-
-from pathlib import Path
-from logger import get_clean_logger
-from typing import List, Union, Callable, Optional
-from torch import nn
 from astropy.io import fits
-from sklearn.model_selection import train_test_split
 from sklearn.impute import KNNImputer
+from sklearn.model_selection import train_test_split
+from torch import nn
+
+from logger import get_clean_logger
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose

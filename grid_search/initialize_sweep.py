@@ -1,15 +1,17 @@
 """Grid search to tune hyperparameters"""
-import os
-import sys
-import shutil
 import ast
-from subprocess import Popen, PIPE
+import os
+import shutil
+import sys
 from itertools import product
+from subprocess import PIPE, Popen
+
 import numpy as np
 
 sys.path.append('/n/home04/aboesky/berger/Weird_Galaxies')
 
 from pathlib import Path
+
 from logger import get_clean_logger
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)

@@ -6,20 +6,22 @@ xmmlss  1247954
 """
 import os
 import sys
-sys.path.append('/Users/adamboesky/Research/ay98')
+
+sys.path.append('/Users/adamboesky/Research/ay98/Weird_Galaxies')
+
+import pickle
+from pathlib import Path
+from typing import Callable, List, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pickle
-
-from pathlib import Path
-from logger import get_clean_logger
-from typing import List, Union, Callable, Optional
 from astropy.io import fits
 from sklearn.impute import KNNImputer
 
+from logger import get_clean_logger
+
 SURVEY = 'wcdfs'
-LOG = get_clean_logger(logger_name = Path(__file__).name, log_filename=f'ay98/preprocessing/preprocessing_{SURVEY}.log')
+LOG = get_clean_logger(logger_name = Path(__file__).name, log_filename=f'/Users/adamboesky/Research/ay98/Weird_Galaxies/preprocessing/preprocessing_{SURVEY}.log')
 PATH_TO_DATA = '/Volumes/T7/ay_98_data/Zou_data'
 PATH_TO_TRAINING_DATA = 'Volumes/T7/ay_98_data/pickled_data'
 FILTER_WAVELENGTHS = {
@@ -31,7 +33,7 @@ FILTER_WAVELENGTHS = {
     'f_SPIRE250': 250000,
     'f_SPIRE350': 350000,
     'f_SPIRE500': 500000,
-    'mag_U_VOICE': 365,
+    'mag_U_VOICE': 365, #nm
     'mag_G_DES': 480,
     'mag_R_DES': 630,
     'mag_R_VOICE': 630,
@@ -184,8 +186,21 @@ def get_photometry_np_from_fits(filepath: Union[str, Path], columns: list, trans
     fits_data = np.array(fits.open(os.path.join(PATH_TO_DATA, filepath))[1].data)
     LOG.info('Importing %s', filepath)
 
-    # Drop any severely Nan columns (>50%)
+    # # Add ids
     n = len(fits_data)
+    # fits_data[vector_key] = np.arange(0, n, 1, dtype=int)  # unique id values
+
+    # Define new dtype with additional column for unique IDs
+    new_dtype = np.dtype(fits_data.dtype.descr + [(vector_key, int)])
+    new_data = np.zeros(len(fits_data), dtype=new_dtype)
+    for name in fits_data.dtype.names:
+        new_data[name] = fits_data[name]
+    new_data[vector_key] = np.arange(len(fits_data))
+    fits_data = new_data
+
+
+
+    # Drop any severely Nan columns (>50%)
     good_columns = []
     good_transforms = []
     for col, trans in zip(columns, transforms):
@@ -223,6 +238,16 @@ def get_catalog_np_from_fits(filepath: Union[str, Path], columns: list, transfor
     """Get given catalog fields in a numpy array from fits file path. Apply given transforms to the data. Return a vector of a column if given."""
     fits_data = np.array(fits.open(os.path.join(PATH_TO_DATA, filepath))[1].data)
     LOG.info('Importing %s', filepath)
+
+    # Add ids
+    n = len(fits_data)
+    # fits_data[vector_key] = np.arange(0, n, 1, dtype=int)  # unique id values
+    new_dtype = np.dtype(fits_data.dtype.descr + [(vector_key, int)])
+    new_data = np.zeros(len(fits_data), dtype=new_dtype)
+    for name in fits_data.dtype.names:
+        new_data[name] = fits_data[name]
+    new_data[vector_key] = np.arange(len(fits_data))
+    fits_data = new_data
 
     # Drop any severely Nan arrays (>50%)
     temp_arr = np.array([fits_data[col] for col in columns]).T
@@ -275,10 +300,10 @@ def pickle_imputed_data(survey):
     out_transforms = [lambda x: np.log10(x), lambda x: np.log10(x), None]
     # out_transforms = [None, None]
 
-    photo, photo_ids = get_photometry_np_from_fits(os.path.join(PATH_TO_DATA, f'photometry/{survey}_photcat.v1.fits'), in_keys, transforms=in_transforms, vector_key='Tractor_ID')
-    untrans_photo_err, photo_err_ids = get_photometry_np_from_fits(os.path.join(PATH_TO_DATA, f'photometry/{survey}_photcat.v1.fits'), in_err_keys, transforms=[None for _ in range(len(in_keys))], vector_key='Tractor_ID')
-    cat, cat_ids = get_catalog_np_from_fits(os.path.join(PATH_TO_DATA, f'sed_catalog/{survey}.v1.fits'), out_keys, transforms=out_transforms, vector_key='Tractor_ID')
-    untrans_cat_err, cat_err_ids = get_catalog_np_from_fits(os.path.join(PATH_TO_DATA, f'sed_catalog/{survey}.v1.fits'), out_err_keys, transforms=[None for _ in range(len(out_err_keys))], vector_key='Tractor_ID')
+    photo, photo_ids = get_photometry_np_from_fits(os.path.join(PATH_TO_DATA, f'photometry/{survey}_photcat.v1.fits'), in_keys, transforms=in_transforms, vector_key='Gal_ID')
+    untrans_photo_err, photo_err_ids = get_photometry_np_from_fits(os.path.join(PATH_TO_DATA, f'photometry/{survey}_photcat.v1.fits'), in_err_keys, transforms=[None for _ in range(len(in_keys))], vector_key='Gal_ID')
+    cat, cat_ids = get_catalog_np_from_fits(os.path.join(PATH_TO_DATA, f'sed_catalog/{survey}.v1.fits'), out_keys, transforms=out_transforms, vector_key='Gal_ID')
+    untrans_cat_err, cat_err_ids = get_catalog_np_from_fits(os.path.join(PATH_TO_DATA, f'sed_catalog/{survey}.v1.fits'), out_err_keys, transforms=[None for _ in range(len(out_err_keys))], vector_key='Gal_ID')
 
 
     # Calculate the zerr using the lower and upper limits (1/2 * difference between upper and lower limits according to paper)
@@ -295,7 +320,13 @@ def pickle_imputed_data(survey):
 
     ######################## FILTER THE DATA AND SORT TO THE SAME ORDER ########################
     # Make ztype column filterable
-    ztype_w_ids = np.array(fits.open(os.path.join(PATH_TO_DATA, f'sed_catalog/{survey}.v1.fits'))[1].data)[['ztype', 'Tractor_ID']]
+    ztype_w_ids = np.array(fits.open(os.path.join(PATH_TO_DATA, f'sed_catalog/{survey}.v1.fits'))[1].data)[['ztype']]
+    new_dtype = np.dtype(ztype_w_ids.dtype.descr + [('Gal_ID', int)])
+    new_data = np.zeros(len(ztype_w_ids), dtype=new_dtype)
+    for name in ztype_w_ids.dtype.names:
+        new_data[name] = ztype_w_ids[name]
+    new_data['Gal_ID'] = np.arange(len(ztype_w_ids))
+    ztype_w_ids = new_data
 
     # Filter matrices based on common IDs
     common_ids = np.intersect1d(photo_ids, np.intersect1d(photo_err_ids, np.intersect1d(cat_ids, cat_err_ids)))
@@ -303,8 +334,8 @@ def pickle_imputed_data(survey):
     untrans_photo_err = filter_matrix(untrans_photo_err, photo_err_ids, common_ids)
     cat = filter_matrix(cat, cat_ids, common_ids)
     untrans_cat_err = filter_matrix(untrans_cat_err, cat_err_ids, common_ids)
-    ztype = filter_matrix(ztype_w_ids['ztype'], ztype_w_ids[['Tractor_ID']], common_ids)
-    tractor_ids = filter_matrix(ztype_w_ids['Tractor_ID'], ztype_w_ids[['Tractor_ID']], common_ids)
+    ztype = filter_matrix(ztype_w_ids['ztype'], ztype_w_ids[['Gal_ID']], common_ids)
+    tractor_ids = filter_matrix(ztype_w_ids['Gal_ID'], ztype_w_ids[['Gal_ID']], common_ids)
 
 
 
@@ -346,7 +377,7 @@ def pickle_imputed_data(survey):
     in_err_keys = [in_err_keys[idx] for idx in ordered_indices]
     photo = photo[:, ordered_indices]
     photo_err = photo_err[:, ordered_indices]
-    plot_dirpath = f'ay98/preprocessing/preprocessing_plots/{survey}'
+    plot_dirpath = f'/Users/adamboesky/Research/ay98/Weird_Galaxies/preprocessing/preprocessing_plots/{survey}'
     if not os.path.isdir(plot_dirpath):
         os.mkdir(plot_dirpath)
 
@@ -395,7 +426,7 @@ def pickle_imputed_data(survey):
             'sorted_wavelengths': sorted_wavelengths,
             'data': photo,
             'data_err': photo_err,
-            'tractor_id': tractor_ids
+            'gal_id': tractor_ids
         },
         'catalog': {
             'keys': out_keys,
@@ -403,10 +434,10 @@ def pickle_imputed_data(survey):
             'data': cat,
             'data_err': cat_err,
             'ztype': ztype,
-            'tractor_id': tractor_ids
+            'gal_id': tractor_ids
         }
     }
-    with open(f'ay98/preprocessing/clean_data/{survey}_preprocessed.pkl', 'wb') as f:
+    with open(f'/Users/adamboesky/Research/ay98/clean_data/{survey}_preprocessed2.pkl', 'wb') as f:
         pickle.dump(data_dict, f)
         LOG.info('Data preprocessed and pickled %s', f.name)
     # with open(f'ay98/preprocessing/clean_data/testing_stuff.pkl', 'wb') as f:
