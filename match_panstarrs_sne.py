@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from astro_ghost.PS1QueryFunctions import ps1search
 from astropy import table
+from astropy.io import ascii
 from astropy.coordinates import Angle
 from mastcasjobs import MastCasJobs
 
@@ -75,6 +76,8 @@ def make_query(ra_deg: float, dec_deg: float, search_radius: float):
 
     # Remove duplicates
     catalog_3pi = table.unique(catalog_3pi, keys = 'objID_3pi', keep = 'first')
+    catalog_3pi.add_column(ra_deg, name='SN_ra')
+    catalog_3pi.add_column(dec_deg, name='SN_dec')
 
     print('Found %s objects \n'%len(catalog_3pi))
     return catalog_3pi
@@ -99,15 +102,15 @@ def match():
     n = len(sne)
     all_res = None
     print(f'Beginning cone search for {n} hosts')
-    for i, host_ra, host_dec in zip(range(n), sne['ra'], sne['dec']):
+    for i, sn_ra, sn_dec in zip(range(n), sne['ra'], sne['dec']):
 
         # Print status
         if i % 1000 == 0:
             print(f'{i} / {n}')
 
         # Put angles in a dictionary
-        dec_ang = Angle(f'{host_dec.split(",")[0]} degrees')
-        ra_ang = Angle(host_ra.split(',')[0], unit='hourangle')
+        dec_ang = Angle(f'{sn_dec.split(",")[0]} degrees')
+        ra_ang = Angle(sn_ra.split(',')[0], unit='hourangle')
         dat['ra'], dat['dec'] = ra_ang.deg, dec_ang.deg
 
         # Cone search
