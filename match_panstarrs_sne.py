@@ -1,20 +1,18 @@
 import os
 import pathlib
 import sys
-from io import StringIO
-
-from astro_ghost.PS1QueryFunctions import ps1search
-
-sys.path.append('/Users/adamboesky/Research/ay98/Weird_Galaxies')
 import pickle
-
 import numpy as np
 import pandas as pd
-from astro_ghost.PS1QueryFunctions import ps1search
+
 from astropy import table
 from astropy.io import ascii
 from astropy.coordinates import Angle
 from mastcasjobs import MastCasJobs
+
+from pathlib import Path
+from logger import get_clean_logger
+LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 
 
 def make_nan(catalog, replace = np.nan):
@@ -36,7 +34,7 @@ def make_query(ra_deg: float, dec_deg: float, search_radius: float):
     '''
 
     # Get the PS1 MAST username and password from /Users/username/3PI_key.txt
-    key_location = os.path.join(pathlib.Path.home(), 'vault/mast_login_harvard.txt')
+    key_location = os.path.join(pathlib.Path.home(), 'vault/mast_login.txt')
     wsid, password = np.genfromtxt(key_location, dtype = 'str')
 
     # 3PI query
@@ -83,26 +81,46 @@ def make_query(ra_deg: float, dec_deg: float, search_radius: float):
     return catalog_3pi
 
 
-def match():
+def match_sne():
 
     # Grab the sne data
-    with open('/Users/adamboesky/Research/ay98/clean_data/sn_coords_clean.csv', 'rb') as f:
+    print('Getting SNe')
+    with open('/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/sn_coords_clean.csv', 'rb') as f:
         sne = pickle.load(f)
 
     # Create empty columns
     cols = ['raMean', 'decMean'] + [f'{filt}MeanApMag' for filt in ['g', 'r', 'i', 'z', 'y']] + [f'{filt}MeanApMagErr' for filt in ['g', 'r', 'i', 'z', 'y']]  # desired columns
     sne[cols] = np.NaN
+    n = len(sne)
+
+    # If the associate table already exists, pick up from the end of the already associated hosts
+    print('Getting the index of the last host')
+    if os.path.exists('/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/panstarrs_hosts.ecsv'):
+
+        # Get the index of the last already associated SN
+        all_res = ascii.read("/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/panstarrs_hosts.ecsv", delimiter=' ', format='ecsv')
+        last_ra, last_dec = all_res[-1]['SN_ra'], all_res[-1]['SN_dec']
+        col_types = {col: all_res[col].dtype for col in all_res.columns}
+        for i, sn_ra, sn_dec in zip(range(n), sne['ra'], sne['dec']):
+            # Put angles in a dictionary
+            dec_ang = Angle(f'{sn_dec.split(",")[0]} degrees')
+            ra_ang = Angle(sn_ra.split(',')[0], unit='hourangle')
+
+            if ra_ang.deg == last_ra and  dec_ang.deg == last_dec:
+                print(f'Search going to pick up from row {i} / {n}')
+                last_searched_ind = i
+                break
+    else:
+        print('No table exists, starting cone search from beginning')
+        last_searched_ind = 0
+        col_types = None
+        all_res = None
+
 
     # Run cone search of panstarrs database for each sn coord
     sr = 30/3600  # search radius [deg]
-    dat = {
-        'sr': sr, 
-        'sort_by': 'distance.ASC'
-    }
-    n = len(sne)
-    all_res = None
     print(f'Beginning cone search for {n} hosts')
-    for i, sn_ra, sn_dec in zip(range(n), sne['ra'], sne['dec']):
+    for i, sn_ra, sn_dec in zip(range(n)[last_searched_ind:], sne['ra'][last_searched_ind:], sne['dec'][last_searched_ind:]):
 
         # Print status
         if i % 1000 == 0:
@@ -111,30 +129,28 @@ def match():
         # Put angles in a dictionary
         dec_ang = Angle(f'{sn_dec.split(",")[0]} degrees')
         ra_ang = Angle(sn_ra.split(',')[0], unit='hourangle')
-        dat['ra'], dat['dec'] = ra_ang.deg, dec_ang.deg
 
         # Cone search
-        # res = ps1search(
-        #     release='dr2',
-        #     columns=cols,
-        #     sr=sr,
-        #     sort_by='distance.ASC',
-        #     ra=ra_ang.deg,
-        #     dec=dec_ang.deg
-        # )
-        # if res is not None and res != '':
-        #     test = res.split('\n')
-        #     res_list = [float(v) for v in res.split('\n')[1].split(',')]
-        #     print(res_list)
-        #     sne.iloc[i, sne.columns.get_indexer(cols)] = res_list
+        try:
+            res = make_query(ra_ang.deg, dec_ang.deg, search_radius=sr)
+            if all_res is None and res is not None:
+                all_res = res
+            elif res is not None:
+                # Convert the types of the table columns
+                if col_types:
+                    for col, dtype in col_types.items():
+                        res[col] = res[col].astype(dtype)
+                all_res = table.vstack([all_res, res])
+            print(res)
 
-        res = make_query(ra_ang.deg, dec_ang.deg, search_radius=sr)
-        if all_res is None and res is not None:
-            all_res = res
-        elif res is not None:
-            all_res = table.vstack([all_res, res])
-        print(all_res)
+            if all_res is not None:
+                ascii.write(all_res, '/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/panstarrs_hosts.ecsv', overwrite=True, format='ecsv')
+        except:
+            print('Exception encountered. Continuing.')
+            continue
 
 
-if __name__=='__main__':
-    match()
+if __name__ == '__main__':
+    print('Running match.')
+    LOG.info('Running match.')
+    match_sne()
