@@ -6,8 +6,8 @@
 #SBATCH -t 1-00:00                          # Runtime in D-HH:MM, minimum of 10 minutes
 
 # Paths to STDOUT or STDERR files should be absolute or relative to current working directory
-#SBATCH -o /n/home04/aboesky/berger/Weird_Galaxies/grid_search/cluster_logs/myoutput_%j.out                  # File to which STDOUT will be written, %j inserts jobid
-#SBATCH -e /n/home04/aboesky/berger/Weird_Galaxies/grid_search/cluster_logs/myerrors_%j.err                  # File to which STDERR will be written, %j inserts jobid
+#SBATCH -o /n/home04/aboesky/berger/Weird_Galaxies/domain_transfer_grid_search/cluster_logs/myoutput_%j.out                  # File to which STDOUT will be written, %j inserts jobid
+#SBATCH -e /n/home04/aboesky/berger/Weird_Galaxies/domain_transfer_grid_search/cluster_logs/myerrors_%j.err                  # File to which STDERR will be written, %j inserts jobid
 
 # Remember:
 # The variable $TMPDIR points to the local hard disks in the computing nodes.
@@ -24,7 +24,7 @@ source activate wandb_env
 # wandb login
 # cd /n/home04/aboesky/berger/Weird_Galaxies
 # python initialize_sweep.py
-cd /n/home04/aboesky/berger/Weird_Galaxies/grid_search
+cd /n/home04/aboesky/berger/Weird_Galaxies/domain_transfer_grid_search
 
 echo 'running script'
 python3 initialize_sweep.py

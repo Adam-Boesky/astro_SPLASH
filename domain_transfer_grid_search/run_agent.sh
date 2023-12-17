@@ -15,4 +15,4 @@
 # The variable $HOME points to your home directory.
 # The variable $SLURM_JOBID stores the ID number of your job.
 
-python3 /n/home04/aboesky/berger/Weird_Galaxies/grid_search/run_agent.py $AGENT_I $BATCH_SIZE "$NODES_PER_LAYER" $NUM_LINEAR_OUTPUT_LAYERS $LEARNING_RATE
+python3 /n/home04/aboesky/berger/Weird_Galaxies/domain_transfer_grid_search/run_agent.py $AGENT_I $BATCH_SIZE "$NODES_PER_LAYER" $NUM_LINEAR_OUTPUT_LAYERS $LEARNING_RATE
