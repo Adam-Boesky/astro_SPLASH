@@ -16,7 +16,7 @@ VERBOSE = False                 # Whether logging should be verbose
 CLUSTER = False                  # Whether we are on the cluster or not
 
 # Parameters for skipping different parts of this file
-SKIP_TRAINING = False
+SKIP_TRAINING = True
 SKIP_PREPROCESSING = False
 SKIP_PLOTTING = False
 
@@ -68,14 +68,10 @@ def load_and_preprocess():
     LOG.info('Length = %i', len(photo))
 
     # Deal with upper limit fluxes
-    # upper_limit_mask = 
-    # LOG.info('%s    and     %s', photo_err_norm.shape, upper_limit_mask.shape)
     for j in range(photo_err_norm.shape[1]):
-        mask = photo_err_norm[:, j] == 0
-        photo_err_norm[:, j][mask] = np.abs(photo_norm[:, j][mask])
-        photo_norm[:, j][mask] = 0.01
-    # photo_err_norm[photo_err_norm == 0] = photo_norm
-    # photo_norm[photo_err_norm == 0] = 0.01 ### TODO: MAKE BIG -- set error to flux. if upper limit, set flux to 0 and uncertainty to flux
+        mask = photo_err_norm[:, j] == 0  # mask for upper limit
+        photo_err_norm[:, j][mask] = np.abs(photo_norm[:, j][mask])  # set the error equal to the photo upper limit
+        photo_norm[:, j][mask] = 0.01  # set the real value to some arbitrarily small value
 
     # Split train and test sets
     photo_train, photo_test, photo_err_train, photo_err_test = \
@@ -106,8 +102,8 @@ def train_and_store_nn():
 
     # Training parameters
     n_epochs = 1000
-    nodes_per_layer = [5, 6, 10, 12, 13]
-    num_linear_output_layers = 2
+    nodes_per_layer = [7, 10, 13]
+    num_linear_output_layers = 1
     learning_rate = 0.01
     batch_size = 4096
     torch.set_default_dtype(torch.float64)
@@ -183,7 +179,7 @@ def train_and_store_nn():
     ######################## CHECK RESULTS AND STORE MODEL ########################
     if not SKIP_PLOTTING:
         LOG.info('Plotting')
-        if SKIP_TRAINING:
+        if SKIP_PREPROCESSING:
             with open(os.path.join(PATH_TO_CLEAN_DATA, 'most_recent_data.pkl'), 'rb') as f:
                 (all_photo, photo_X_train, photo_y_train, photo_Xerr_train, \
                     photo_yerr_train, photo_X_test, photo_y_test, photo_Xerr_test, \
@@ -193,6 +189,8 @@ def train_and_store_nn():
         test_pred: torch.Tensor = model(torch.from_numpy(photo_X_test))
         test_pred_untrans = test_pred.detach().numpy()
         for idx in range(test_pred.shape[1]):
+            up_lim_mask = photo_y_test == 0.01
+            photo_y_test[up_lim_mask] = photo_yerr_test[up_lim_mask]  # set the measurements back to upper limits for plotting
             plot_real_v_preds(photo_y_test[:, idx] * photo_std[idx] + photo_mean[idx], test_pred_untrans[:, idx] * photo_std[idx] + photo_mean[idx], real_err=photo_yerr_test[:, idx] * photo_std[idx], param=f"log10({all_photo['sorted_filters'][5:][idx]}", plot_dirname='sed_nn_training_plots', filename_postfix=all_photo['sorted_filters'][5:][idx])
 
 
