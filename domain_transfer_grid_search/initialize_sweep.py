@@ -23,7 +23,7 @@ GRID_CONFIG = {
         [6, 8, 9, 11, 13]
     ],
     'num_linear_output_layers': [1, 2, 3],
-    'learning_rate': np.linspace(0.01, 1.0, num=5)
+    'learning_rate': np.logspace(-3, 0, num=6)
 }
 
 
