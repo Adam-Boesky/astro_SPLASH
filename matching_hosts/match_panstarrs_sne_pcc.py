@@ -24,13 +24,19 @@ from match_panstarrs_sne import make_query
 # os.mkdir = 'ps1_dir'
 PS1FILENAME = "https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
 FITSCUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
+CLUSTER = False
+
+if CLUSTER:
+    PATH_TO_STORAGE = '/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/'
+else: 
+    PATH_TO_STORAGE = '/Users/adamboesky/Research/ay98/clean_data'
 
 
 def get_current_data():
     """Get the current place in our data."""
     # Grab the sne data
     print('Getting SNe')
-    with open('/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/sn_coords_clean.csv', 'rb') as f:
+    with open(os.path.join(PATH_TO_STORAGE, 'sn_coords_clean.csv'), 'rb') as f:
         sne = pickle.load(f)
 
     # Create empty columns
@@ -40,10 +46,10 @@ def get_current_data():
 
     # If the associate table already exists, pick up from the end of the already associated hosts
     print('Getting the index of the last host')
-    if os.path.exists('/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/panstarrs_hosts_pcc.ecsv'):
+    if os.path.exists(os.path.join(PATH_TO_STORAGE, '/panstarrs_hosts_pcc.ecsv')):
 
         # Get the index of the last already associated SN
-        all_res = ascii.read("/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/panstarrs_hosts_pcc.ecsv", delimiter=' ', format='ecsv')
+        all_res = ascii.read(os.path.join(PATH_TO_STORAGE, '/panstarrs_hosts_pcc.ecsv'), delimiter=' ', format='ecsv')
         last_ra, last_dec = all_res[-1]['SN_ra'], all_res[-1]['SN_dec']
         col_types = {col: all_res[col].dtype for col in all_res.columns}
         for i, sn_ra, sn_dec in zip(range(n), sne['ra'], sne['dec']):
@@ -167,12 +173,15 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
 
     if table is not None:
         # Download the cutout to your directory
-        if not os.path.exists('/n/holystore01/LABS/berger_lab/Users/aboesky/weird_galaxy_data/ps1_dir'):
-            os.mkdir('/n/holystore01/LABS/berger_lab/Users/aboesky/weird_galaxy_data/ps1_dir')
-        wget.download(table['url'][0],out='/n/holystore01/LABS/berger_lab/Users/aboesky/weird_galaxy_data/ps1_dir')
+        print('heeeeeere', PATH_TO_STORAGE)
+        ps1_dirpath = os.path.join(PATH_TO_STORAGE, 'ps1_dir')
+        print(ps1_dirpath)
+        if not os.path.exists(ps1_dirpath):
+            os.mkdir(ps1_dirpath)
+        wget.download(table['url'][0],out=ps1_dirpath)
 
         ## Load the data
-        sn_image = glob('/n/holystore01/LABS/berger_lab/Users/aboesky/weird_galaxy_data/ps1_dir/*.fits')[0]
+        sn_image = glob(os.path.join(ps1_dirpath, '*.fits'))[0]
         sn = fits.open(sn_image)
         sn_data, sn_bkg = background_subtracted(sn[0].data)
 
@@ -217,18 +226,22 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
             P_cc = 1-np.exp(-np.pi*R_e**2*sigma_m)
 
             # The indices of the host candidates
-            host_inds = np.where(P_cc < 0.1)
+            host_inds = np.where(P_cc < 0.1)[0]
+            print(P_cc, host_inds)
 
             if len(host_inds) > 0:  # If there is any host candidates!!!
                 for host_ind in host_inds:
 
                     # Get host coords
+                    print(host_ind)
                     host = cat.get_label(host_ind+1)
                     host_x, host_y = (host.xcentroid,host.ycentroid)
                     host_ra, host_dec = sn_wcs.all_pix2world(host_x, host_y, 1)
                     print(f'COOOORDDSS: {host_ra, host_dec}')
 
                     # Append values
+                    print(host_x, host_y)
+                    print(host_ra, host_dec)
                     host_ras.append(float(host_ra))
                     host_decs.append(float(host_dec))
                     host_P_ccs.append(P_cc[host_ind])
@@ -238,7 +251,7 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
             host_P_ccs, host_ras, host_decs = zip(*combined)
 
             # Clean up dir
-            shutil.rmtree('/n/holystore01/LABS/berger_lab/Users/aboesky/weird_galaxy_data/ps1_dir')
+            shutil.rmtree(ps1_dirpath)
 
     return host_ras, host_decs, host_P_ccs
 
@@ -298,7 +311,7 @@ def match_host_sne():
                     print(f'Best Result: \n{res}')
 
                     if all_res is not None:
-                        ascii.write(all_res, '/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/panstarrs_hosts_pcc.ecsv', overwrite=True, format='ecsv')
+                        ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv'), overwrite=True, format='ecsv')
                     break
                 except:
                     print(f'Exception {attempt} encountered. Continuing.')

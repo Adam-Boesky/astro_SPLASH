@@ -13,6 +13,7 @@ from mastcasjobs import MastCasJobs
 
 from pathlib import Path
 sys.path.append('/n/home04/aboesky/berger/Weird_Galaxies')
+sys.path.append('/Users/adamboesky/Research/ay98/Weird_Galaxies')
 from logger import get_clean_logger
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 
