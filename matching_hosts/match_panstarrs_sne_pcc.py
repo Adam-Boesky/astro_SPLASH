@@ -6,6 +6,7 @@ import pickle
 import shutil
 from io import StringIO
 import wget
+import urllib
 from astropy.io import fits
 from astropy import table
 from astropy.wcs import WCS
@@ -20,7 +21,7 @@ from photutils.segmentation import detect_threshold, detect_sources, SourceCatal
 from photutils.background import Background2D, MADStdBackgroundRMS
 from photutils.utils import circular_footprint, calc_total_error
 from match_panstarrs_sne import make_query
- 
+
 # os.mkdir = 'ps1_dir'
 PS1FILENAME = "https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
 FITSCUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
@@ -46,21 +47,23 @@ def get_current_data():
 
     # If the associate table already exists, pick up from the end of the already associated hosts
     print('Getting the index of the last host')
-    if os.path.exists(os.path.join(PATH_TO_STORAGE, '/panstarrs_hosts_pcc.ecsv')):
+    if os.path.exists(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv')):
 
         # Get the index of the last already associated SN
-        all_res = ascii.read(os.path.join(PATH_TO_STORAGE, '/panstarrs_hosts_pcc.ecsv'), delimiter=' ', format='ecsv')
+        all_res = ascii.read(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv'), delimiter=' ', format='ecsv')
         last_ra, last_dec = all_res[-1]['SN_ra'], all_res[-1]['SN_dec']
         col_types = {col: all_res[col].dtype for col in all_res.columns}
         for i, sn_ra, sn_dec in zip(range(n), sne['ra'], sne['dec']):
             # Put angles in a dictionary
-            dec_ang = Angle(f'{sn_dec.split(",")[0]} degrees')
-            ra_ang = Angle(sn_ra.split(',')[0], unit='hourangle')
+            dec_deg = Angle(f'{sn_dec.split(",")[0]} degrees').deg
+            ra_deg = Angle(sn_ra.split(',')[0], unit='hourangle').deg
 
-            if ra_ang.deg == last_ra and  dec_ang.deg == last_dec:
+            tol = 1E-10  # tolerance for SNe being the same
+            if abs(ra_deg - last_ra) < tol and abs(dec_deg - last_dec) < tol:
                 print(f'Search going to pick up from row {i} / {n}')
                 last_searched_ind = i
                 break
+
     else:
         print('No table exists, starting cone search from beginning')
         last_searched_ind = 0
@@ -118,8 +121,8 @@ def get_images(tra, tdec, size_arcsec=None, filters="grizy", format="fits", imag
                                                                                             'cutout_'+shortname) 
                         for (filename,ra,dec,shortname) in zip(tab["filename"],tab["ra"],tab["dec"],tab['shortname'])]
             break
-        except:
-            print(f'Exception {attempt} encountered getting image. Continuing.')
+        except Exception as e:
+            print(f'Exception {attempt} encountered getting image: {e}. Continuing...')
             tab = None
             continue
 
@@ -173,12 +176,17 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
 
     if table is not None:
         # Download the cutout to your directory
-        print('heeeeeere', PATH_TO_STORAGE)
         ps1_dirpath = os.path.join(PATH_TO_STORAGE, 'ps1_dir')
-        print(ps1_dirpath)
         if not os.path.exists(ps1_dirpath):
             os.mkdir(ps1_dirpath)
-        wget.download(table['url'][0],out=ps1_dirpath)
+
+        try:
+            wget.download(table['url'][0],out=ps1_dirpath)
+        except urllib.error.HTTPError as e:
+            print(f'Error code on wget: {e.code}')
+            print(f'Error message on wget: {e.reason}')
+            print(f'URL is: {table["url"][0]}')
+            return host_ras, host_decs, host_P_ccs
 
         ## Load the data
         sn_image = glob(os.path.join(ps1_dirpath, '*.fits'))[0]
@@ -227,21 +235,16 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
 
             # The indices of the host candidates
             host_inds = np.where(P_cc < 0.1)[0]
-            print(P_cc, host_inds)
 
             if len(host_inds) > 0:  # If there is any host candidates!!!
                 for host_ind in host_inds:
 
                     # Get host coords
-                    print(host_ind)
                     host = cat.get_label(host_ind+1)
                     host_x, host_y = (host.xcentroid,host.ycentroid)
                     host_ra, host_dec = sn_wcs.all_pix2world(host_x, host_y, 1)
-                    print(f'COOOORDDSS: {host_ra, host_dec}')
 
                     # Append values
-                    print(host_x, host_y)
-                    print(host_ra, host_dec)
                     host_ras.append(float(host_ra))
                     host_decs.append(float(host_dec))
                     host_P_ccs.append(P_cc[host_ind])
@@ -298,8 +301,7 @@ def match_host_sne():
             # 3 tries in the query
             for attempt in range(3):
                 try:
-                    res = make_query(host_ra, host_dec, search_radius=sr)
-                    print(f'RES: {res}')
+                    res = make_query(host_ra, host_dec, search_radius=sr, sn_ra=sn_ra_ang, sn_dec=sn_dec_ang)
                     if all_res is None and res is not None:
                         all_res = res
                     elif res is not None:
@@ -313,8 +315,8 @@ def match_host_sne():
                     if all_res is not None:
                         ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv'), overwrite=True, format='ecsv')
                     break
-                except:
-                    print(f'Exception {attempt} encountered. Continuing.')
+                except Exception as e:
+                    print(f'Exception {attempt} encountered as {e}. Continuing.')
                     continue
 
 

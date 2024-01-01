@@ -31,7 +31,7 @@ def make_nan(catalog, replace = np.nan):
     return catalog
 
 
-def make_query(ra_deg: float, dec_deg: float, search_radius: float):
+def make_query(ra_deg: float, dec_deg: float, search_radius: float, sn_ra: float = None, sn_dec: float = None):
     '''
     Adapted from FLEET.
     '''
@@ -77,8 +77,12 @@ def make_query(ra_deg: float, dec_deg: float, search_radius: float):
 
     # Remove duplicates
     catalog_3pi = table.unique(catalog_3pi, keys = 'objID_3pi', keep = 'first')
-    catalog_3pi.add_column(ra_deg, name='SN_ra')
-    catalog_3pi.add_column(dec_deg, name='SN_dec')
+    if sn_ra is None and sn_dec is None:
+        catalog_3pi.add_column(ra_deg, name='SN_ra')
+        catalog_3pi.add_column(dec_deg, name='SN_dec')
+    else:
+        catalog_3pi.add_column(sn_ra, name='SN_ra')
+        catalog_3pi.add_column(sn_dec, name='SN_dec')
 
     print('Found %s objects \n'%len(catalog_3pi))
     return catalog_3pi
