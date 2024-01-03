@@ -87,7 +87,7 @@ def get_images(tra, tdec, size_arcsec=None, filters="grizy", format="fits", imag
         stack.mask, stack.exp (exposure time), stack.num (number of exposures),
         warp.wt, and warp.mask.  This parameter can be a list of strings or a
         comma-separated string.
- 
+
     Returns an astropy table with the results
     """
 
