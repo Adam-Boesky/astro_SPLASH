@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 from astropy.table import Table
 import requests
@@ -7,6 +8,7 @@ import shutil
 from io import StringIO
 import wget
 import urllib
+from pathlib import Path
 from astropy.io import fits
 from astropy import table
 from astropy.wcs import WCS
@@ -22,10 +24,15 @@ from photutils.background import Background2D, MADStdBackgroundRMS
 from photutils.utils import circular_footprint, calc_total_error
 from match_panstarrs_sne import make_query
 
+sys.path.append('/n/home04/aboesky/berger/Weird_Galaxies')
+sys.path.append('/Users/adamboesky/Research/ay98/Weird_Galaxies')
+from logger import get_clean_logger
+LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
+
 # os.mkdir = 'ps1_dir'
 PS1FILENAME = "https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
 FITSCUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
-CLUSTER = False
+CLUSTER = True
 
 if CLUSTER:
     PATH_TO_STORAGE = '/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/'
@@ -36,7 +43,6 @@ else:
 def get_current_data():
     """Get the current place in our data."""
     # Grab the sne data
-    print('Getting SNe')
     with open(os.path.join(PATH_TO_STORAGE, 'sn_coords_clean.csv'), 'rb') as f:
         sne = pickle.load(f)
 
@@ -46,7 +52,7 @@ def get_current_data():
     n = len(sne)
 
     # If the associate table already exists, pick up from the end of the already associated hosts
-    print('Getting the index of the last host')
+    LOG.info('Getting the index of the last host in saved table')
     if os.path.exists(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv')):
 
         # Get the index of the last already associated SN
@@ -60,12 +66,12 @@ def get_current_data():
 
             tol = 1E-10  # tolerance for SNe being the same
             if abs(ra_deg - last_ra) < tol and abs(dec_deg - last_dec) < tol:
-                print(f'Search going to pick up from row {i} / {n}')
+                LOG.info(f'Search going to pick up from row {i} / {n}')
                 last_searched_ind = i
                 break
 
     else:
-        print('No table exists, starting cone search from beginning')
+        LOG.info('No table exists, starting cone search from beginning')
         last_searched_ind = 0
         col_types = None
         all_res = None
@@ -122,7 +128,7 @@ def get_images(tra, tdec, size_arcsec=None, filters="grizy", format="fits", imag
                         for (filename,ra,dec,shortname) in zip(tab["filename"],tab["ra"],tab["dec"],tab['shortname'])]
             break
         except Exception as e:
-            print(f'Exception {attempt} encountered getting image: {e}. Continuing...')
+            LOG.info(f'Exception {attempt} encountered getting image: {e}. Continuing...')
             tab = None
             continue
 
@@ -140,8 +146,11 @@ def background_subtracted(data):
     mask = segment_img.make_source_mask(footprint=footprint)
     xsize = round(data.shape[1]/100)
     ysize = round(data.shape[0]/100)
-    bkg = Background2D(data, (ysize,xsize), filter_size=(3, 3),mask=mask,
-                       bkgrms_estimator = MADStdBackgroundRMS(sigma_clip))
+    try:
+        bkg = Background2D(data, (ysize,xsize), filter_size=(3, 3),mask=mask,
+                        bkgrms_estimator = MADStdBackgroundRMS(sigma_clip))
+    except:
+        return None, None
     sub_data = data-bkg.background
     return sub_data, bkg
 
@@ -183,9 +192,9 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
         try:
             wget.download(table['url'][0],out=ps1_dirpath)
         except urllib.error.HTTPError as e:
-            print(f'Error code on wget: {e.code}')
-            print(f'Error message on wget: {e.reason}')
-            print(f'URL is: {table["url"][0]}')
+            LOG.info(f'Error code on wget: {e.code}')
+            LOG.info(f'Error message on wget: {e.reason}')
+            LOG.info(f'URL is: {table["url"][0]}')
             return host_ras, host_decs, host_P_ccs
 
         ## Load the data
@@ -251,7 +260,12 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
 
             # Sort candidates in increasing P_cc
             combined = sorted(zip(host_P_ccs, host_ras, host_decs))
-            host_P_ccs, host_ras, host_decs = zip(*combined)
+            if combined:
+                host_P_ccs, host_ras, host_decs = zip(*combined)
+            else:
+                # Handle the empty case appropriately
+                host_P_ccs, host_ras, host_decs = [], [], []
+            # host_P_ccs, host_ras, host_decs = zip(*combined)
 
             # Clean up dir
             shutil.rmtree(ps1_dirpath)
@@ -282,43 +296,56 @@ def match_host_sne():
     n = len(sne)
 
     # Get the host candidate coords
-    for i, sn_ra, sn_dec, sn_z in zip(range(n)[last_searched_ind:], sne['ra'][last_searched_ind:], sne['dec'][last_searched_ind:], sne['redshift'][last_searched_ind:]):
+    for i, sn_ra, sn_dec, sn_z, sn_class in zip(range(n)[last_searched_ind:], sne['ra'][last_searched_ind:], sne['dec'][last_searched_ind:], sne['redshift'][last_searched_ind:], sne['claimedtype'][last_searched_ind:]):
+        if isinstance(sn_class, str) and sn_class != 'Candidate':  # only do the search if the SN is classified!!!
 
-        # Convert SN coords to degrees
-        sn_ra_ang = Angle(sn_ra.split(',')[0], unit='hourangle').deg
-        sn_dec_ang = Angle(f'{sn_dec.split(",")[0]} degrees').deg
+            # Convert SN coords to degrees
+            sn_ra_ang = Angle(sn_ra.split(',')[0], unit='hourangle').deg
+            sn_dec_ang = Angle(f'{sn_dec.split(",")[0]} degrees').deg
 
-        # Get the host coordinates
-        sn_z = get_mean_of_strs(sn_z)
-        print(f'Searching for most likely host for SN @ {sn_ra_ang, sn_dec_ang}')
-        host_ras, host_decs, host_P_ccs = get_host_coords(sn_ra_ang, sn_dec_ang, sn_z)
-        print(f'{len(host_ras)} candidates found with P_cc < 0.1')
+            # Get the host coordinates
+            sn_z = get_mean_of_strs(sn_z)
+            host_ras, host_decs, host_P_ccs = get_host_coords(sn_ra_ang, sn_dec_ang, sn_z)
+            LOG.info(f'SN @ {sn_ra_ang, sn_dec_ang}: \t \t {len(host_ras)} candidates found with P_cc < 0.1')
 
-        # Search through all the candidates (in increasing order of probability) and get data
-        for host_ra, host_dec in zip(host_ras, host_decs):
-            print(f'Search for hosts at {host_ra, host_dec}')
+            # Search through all the candidates (in increasing order of probability) and get data
+            res = None
+            for host_ra, host_dec in zip(host_ras, host_decs):
 
-            # 3 tries in the query
-            for attempt in range(3):
-                try:
-                    res = make_query(host_ra, host_dec, search_radius=sr, sn_ra=sn_ra_ang, sn_dec=sn_dec_ang)
-                    if all_res is None and res is not None:
-                        all_res = res
-                    elif res is not None:
-                        # Convert the types of the table columns
-                        if col_types:
-                            for col, dtype in col_types.items():
-                                res[col] = res[col].astype(dtype)
-                        all_res = table.vstack([all_res, res])
-                    print(f'Best Result: \n{res}')
+                # 3 tries in the query
+                for attempt in range(3):
+                    try:
+                        res = make_query(host_ra, host_dec, search_radius=sr, sn_ra=sn_ra_ang, sn_dec=sn_dec_ang)
+                        if all_res is None and res is not None:
+                            all_res = res
+                        elif res is not None:
 
-                    if all_res is not None:
-                        ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv'), overwrite=True, format='ecsv')
+                            # Append SN type to result
+                            res['sn_class'] = sn_class
+
+                            # Convert the types of the table columns
+                            if col_types:
+                                for col, dtype in col_types.items():
+                                    res[col] = res[col].astype(dtype)
+
+                            # Append result to final table
+                            all_res = table.vstack([all_res, res])
+                        LOG.info(f'Best result for host at {host_ra, host_dec}: \n{res}')
+
+                        if all_res is not None:
+                            ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv'), overwrite=True, format='ecsv')
+                        break
+                    except Exception as e:
+                        if "500" in str(e):
+                            LOG.info(f'Caught a 500 Internal Server Error on attempt {attempt}: {e}. Continuing.')
+                            continue
+                        else:
+                            LOG.error(f'Unexpected exception on attempt {attempt}: {e}.')
+                            raise
+                
+                # If we got a result stop trying for the less likely hosts
+                if res is not None:
                     break
-                except Exception as e:
-                    print(f'Exception {attempt} encountered as {e}. Continuing.')
-                    continue
-
 
 if __name__=='__main__':
     match_host_sne()
