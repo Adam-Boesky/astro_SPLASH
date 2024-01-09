@@ -2,7 +2,7 @@
 
 #SBATCH -p shared
 #SBATCH -c 12                                       # Number of cores (-c)
-#SBATCH --mem=56G                                   # Memory pool for all cores (see also --mem-per-cpu)
+#SBATCH --mem=112G                                   # Memory pool for all cores (see also --mem-per-cpu)
 #SBATCH -t 1-00:00                          # Runtime in D-HH:MM, minimum of 10 minutes
 
 # Paths to STDOUT or STDERR files should be absolute or relative to current working directory
