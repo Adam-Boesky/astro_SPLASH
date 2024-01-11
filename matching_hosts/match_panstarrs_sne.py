@@ -31,7 +31,7 @@ def make_nan(catalog, replace = np.nan):
     return catalog
 
 
-def make_query(ra_deg: float, dec_deg: float, search_radius: float, sn_ra: float = None, sn_dec: float = None):
+def make_query(ra_deg: float, dec_deg: float, search_radius_arcmin: float, sn_ra: float = None, sn_dec: float = None):
     '''
     Adapted from FLEET.
     '''
@@ -53,10 +53,10 @@ def make_query(ra_deg: float, dec_deg: float, search_radius: float, sn_ra: float
     FULL JOIN StackModelFitSer s on o.objid=s.objid
     INNER JOIN StackObjectAttributes b on o.objid=b.objid WHERE m.primaryDetection = 1 AND psc.ps_score < 0.9
     """
-    la_query = the_query%(ra_deg, dec_deg, search_radius)
+    la_query = the_query%(ra_deg, dec_deg, search_radius_arcmin)
 
     # Format Query
-    jobs    = MastCasJobs(userid=wsid, password=password, context="PanSTARRS_DR1")
+    jobs    = MastCasJobs(userid=wsid, password=password, context="PanSTARRS_DR2")
     results = jobs.quick(la_query, task_name="python cone search")
 
     # For New format

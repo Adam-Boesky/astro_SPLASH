@@ -23,6 +23,14 @@ from photutils.segmentation import detect_threshold, detect_sources, SourceCatal
 from photutils.background import Background2D, MADStdBackgroundRMS
 from photutils.utils import circular_footprint, calc_total_error
 from match_panstarrs_sne import make_query
+import warnings
+from astropy.wcs import FITSFixedWarning
+
+# Filter out the specific FITSFixedWarning
+warnings.filterwarnings('ignore', category=FITSFixedWarning)
+warnings.filterwarnings('ignore', module='photutils.background.background_2d')
+warnings.filterwarnings('ignore', module='astropy.stats.sigma_clipping')
+
 
 sys.path.append('/n/home04/aboesky/berger/Weird_Galaxies')
 sys.path.append('/Users/adamboesky/Research/ay98/Weird_Galaxies')
@@ -32,7 +40,7 @@ LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful lo
 # os.mkdir = 'ps1_dir'
 PS1FILENAME = "https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
 FITSCUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
-CLUSTER = True
+CLUSTER = False
 
 if CLUSTER:
     PATH_TO_STORAGE = '/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/'
@@ -53,10 +61,10 @@ def get_current_data():
 
     # If the associate table already exists, pick up from the end of the already associated hosts
     LOG.info('Getting the index of the last host in saved table')
-    if os.path.exists(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv')):
+    if os.path.exists(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_test.ecsv')):
 
         # Get the index of the last already associated SN
-        all_res = ascii.read(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv'), delimiter=' ', format='ecsv')
+        all_res = ascii.read(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_test.ecsv'), delimiter=' ', format='ecsv')
         last_ra, last_dec = all_res[-1]['SN_ra'], all_res[-1]['SN_dec']
         col_types = {col: all_res[col].dtype for col in all_res.columns}
         for i, sn_ra, sn_dec in zip(range(n), sne['ra'], sne['dec']):
@@ -97,10 +105,11 @@ def get_images(tra, tdec, size_arcsec=None, filters="grizy", format="fits", imag
     Returns an astropy table with the results
     """
 
-    # If there was no redshift, we default to a 60 arcsecond search
+    # If there was no redshift, we default to a 60 arcsecond radius search
     if size_arcsec is None:
-        size_arcsec = 60
+        size_arcsec = 120
     size = np.ceil(size_arcsec * (1 / 0.25)).astype(int)   # size in pixels
+    LOG.info(f'Downloading image of size {size}.')
 
     if format not in ("jpg","png","fits"):
         raise ValueError("format must be one of jpg, png, fits")
@@ -245,7 +254,7 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
             # The indices of the host candidates
             host_inds = np.where(P_cc < 0.1)[0]
 
-            if len(host_inds) > 0:  # If there is any host candidates!!!
+            if len(host_inds) > 0:  # If there are any host candidates!!!
                 for host_ind in host_inds:
 
                     # Get host coords
@@ -289,14 +298,14 @@ def match_host_sne():
     """Match the sne to host galaxies in the panstarrs databse and save files."""
 
     # Necessary params
-    sr = 6/3600  # search radius [deg]
+    sr_arcmin = 6/60  # arcmins radius [arcminutes]
 
     # Grab the current data
     sne, last_searched_ind, col_types, all_res = get_current_data()
     n = len(sne)
 
     # Get the host candidate coords
-    for i, sn_ra, sn_dec, sn_z, sn_class in zip(range(n)[last_searched_ind:], sne['ra'][last_searched_ind:], sne['dec'][last_searched_ind:], sne['redshift'][last_searched_ind:], sne['claimedtype'][last_searched_ind:]):
+    for i, sn_ra, sn_dec, sn_z, sn_class in zip(range(n)[last_searched_ind + 1:], sne['ra'][last_searched_ind + 1:], sne['dec'][last_searched_ind + 1:], sne['redshift'][last_searched_ind + 1:], sne['claimedtype'][last_searched_ind + 1:]):
         if isinstance(sn_class, str) and sn_class != 'Candidate':  # only do the search if the SN is classified!!!
 
             # Convert SN coords to degrees
@@ -306,22 +315,31 @@ def match_host_sne():
             # Get the host coordinates
             sn_z = get_mean_of_strs(sn_z)
             host_ras, host_decs, host_P_ccs = get_host_coords(sn_ra_ang, sn_dec_ang, sn_z)
-            LOG.info(f'SN @ {sn_ra_ang, sn_dec_ang}: \t \t {len(host_ras)} candidates found with P_cc < 0.1')
+            if len(host_ras) != 0:  # if we find a host
+                host_ra = host_ras[0]       # first one is the host!
+                host_dec = host_decs[0]     # first one is the host!
+                LOG.info(f'SN @ {sn_ra_ang, sn_dec_ang}, z={sn_z}: \t \t {len(host_ras)} candidates found with P_cc < 0.1')
 
-            # Search through all the candidates (in increasing order of probability) and get data
-            res = None
-            for host_ra, host_dec in zip(host_ras, host_decs):
+                # Search through all the candidates (in increasing order of probability) and get data
+                res = None
 
                 # 3 tries in the query
                 for attempt in range(3):
                     try:
-                        res = make_query(host_ra, host_dec, search_radius=sr, sn_ra=sn_ra_ang, sn_dec=sn_dec_ang)
+                        res = make_query(host_ra, host_dec, search_radius_arcmin=sr_arcmin, sn_ra=sn_ra_ang, sn_dec=sn_dec_ang)
+
                         if all_res is None and res is not None:
+                            # Only first (closest) row
+                            res = res[0:1]
                             all_res = res
+
                         elif res is not None:
+                            # Only first (closest) row
+                            res = res[0:1]
 
                             # Append SN type to result
                             res['sn_class'] = sn_class
+                            res['sn_redshift'] = sn_z
 
                             # Convert the types of the table columns
                             if col_types:
@@ -333,7 +351,7 @@ def match_host_sne():
                         LOG.info(f'Best result for host at {host_ra, host_dec}: \n{res}')
 
                         if all_res is not None:
-                            ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc.ecsv'), overwrite=True, format='ecsv')
+                            ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_test.ecsv'), overwrite=True, format='ecsv')
                         break
                     except Exception as e:
                         if "500" in str(e):
@@ -342,10 +360,7 @@ def match_host_sne():
                         else:
                             LOG.error(f'Unexpected exception on attempt {attempt}: {e}.')
                             raise
-                
-                # If we got a result stop trying for the less likely hosts
-                if res is not None:
-                    break
+
 
 if __name__=='__main__':
     match_host_sne()
