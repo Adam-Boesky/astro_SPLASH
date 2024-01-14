@@ -40,7 +40,7 @@ LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful lo
 # os.mkdir = 'ps1_dir'
 PS1FILENAME = "https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
 FITSCUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
-CLUSTER = False
+CLUSTER = True
 
 if CLUSTER:
     PATH_TO_STORAGE = '/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/'
@@ -61,10 +61,10 @@ def get_current_data():
 
     # If the associate table already exists, pick up from the end of the already associated hosts
     LOG.info('Getting the index of the last host in saved table')
-    if os.path.exists(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_test.ecsv')):
+    if os.path.exists(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_final.ecsv')):
 
         # Get the index of the last already associated SN
-        all_res = ascii.read(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_test.ecsv'), delimiter=' ', format='ecsv')
+        all_res = ascii.read(os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_final.ecsv'), delimiter=' ', format='ecsv')
         last_ra, last_dec = all_res[-1]['SN_ra'], all_res[-1]['SN_dec']
         col_types = {col: all_res[col].dtype for col in all_res.columns}
         for i, sn_ra, sn_dec in zip(range(n), sne['ra'], sne['dec']):
@@ -350,8 +350,9 @@ def match_host_sne():
                             all_res = table.vstack([all_res, res])
                         LOG.info(f'Best result for host at {host_ra, host_dec}: \n{res}')
 
-                        if all_res is not None:
-                            ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_test.ecsv'), overwrite=True, format='ecsv')
+                        if all_res is not None and i % 100 == 0:
+                            LOG.info(f'Index = {i} / {n}, logging...')
+                            ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_final.ecsv'), overwrite=True, format='ecsv')
                         break
                     except Exception as e:
                         if "500" in str(e):
@@ -360,6 +361,10 @@ def match_host_sne():
                         else:
                             LOG.error(f'Unexpected exception on attempt {attempt}: {e}.')
                             raise
+
+    # Log when done
+    LOG.info(f'Done with search ({i} / {n})!!! Logging...')
+    ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'panstarrs_hosts_pcc_final.ecsv'), overwrite=True, format='ecsv')
 
 
 if __name__=='__main__':
