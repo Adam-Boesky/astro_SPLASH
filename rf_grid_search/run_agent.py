@@ -23,14 +23,14 @@ def train():
 
     # Load in data
     LOG.info('Load data!!!')
-    with open('/Users/adamboesky/Research/ay98/clean_data/rf_cv_data.pkl', 'rb') as f:
+    with open('/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/rf_cv_data.pkl', 'rb') as f:
         X, y = pickle.load(f)
 
     # Retrieve grid parameters
     thresh = float(sys.argv[-1])
     try:
         cc_weight = ast.literal_eval(sys.argv[-2])
-    except ValueError:
+    except:
         cc_weight = str(sys.argv[-2])
     agent_i = int(sys.argv[-3])
 

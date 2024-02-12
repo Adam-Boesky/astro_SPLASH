@@ -3,11 +3,11 @@
 #SBATCH -p shared
 #SBATCH -n 1
 #SBATCH --mem-per-cpu=5G
-#SBATCH -t 1-00:00                          # Runtime in D-HH:MM, minimum of 10 minutes
+#SBATCH -t 0-01:00                          # Runtime in D-HH:MM, minimum of 10 minutes
 
 # Paths to STDOUT or STDERR files should be absolute or relative to current working directory
-#SBATCH -o /n/home04/aboesky/berger/Weird_Galaxies/domain_transfer_grid_search/cluster_logs/myoutput_%j.out                  # File to which STDOUT will be written, %j inserts jobid
-#SBATCH -e /n/home04/aboesky/berger/Weird_Galaxies/domain_transfer_grid_search/cluster_logs/myerrors_%j.err                  # File to which STDERR will be written, %j inserts jobid
+#SBATCH -o /n/home04/aboesky/berger/Weird_Galaxies/rf_grid_search/cluster_logs/myoutput_%j.out                  # File to which STDOUT will be written, %j inserts jobid
+#SBATCH -e /n/home04/aboesky/berger/Weird_Galaxies/rf_grid_search/cluster_logs/myerrors_%j.err                  # File to which STDERR will be written, %j inserts jobid
 
 # Remember:
 # The variable $TMPDIR points to the local hard disks in the computing nodes.

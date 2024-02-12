@@ -23,10 +23,11 @@ for v1 in w_vals:
     for v2 in w_vals:
         for v3 in w_vals:
             for v4 in w_vals:
-                weight_grid.append({1: v1,
-                                    2: v2,
-                                    3: v3,
-                                    4: v4})
+                if ~(v1 == v2 and v2==v3 and v3==v4):
+                    weight_grid.append({1: v1,
+                                        2: v2,
+                                        3: v3,
+                                        4: v4})
 thresh_grid = np.arange(0.1, 1.0, 0.1)
 
 
@@ -49,8 +50,8 @@ def tune_parameters():
 
         # Open a pipe to the sbatch command.
         os.environ['AGENT_I'] = str(i)
-        os.environ['THRESH'] = thresh
-        os.environ['WEIGHTS'] = weights
+        os.environ['THRESH'] = str(thresh)
+        os.environ['WEIGHTS'] = str(weights)
 
         sbatch_command = f'sbatch --wait run_agent.sh'
         proc = Popen(sbatch_command, shell=True)
