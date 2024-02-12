@@ -15,4 +15,4 @@
 # The variable $HOME points to your home directory.
 # The variable $SLURM_JOBID stores the ID number of your job.
 
-python3 /n/home04/aboesky/berger/Weird_Galaxies/rf_grid_search/run_agent.py $AGENT_I $WEIGHTS $THRESH
+python3 /n/home04/aboesky/berger/Weird_Galaxies/rf_grid_search/run_agent.py $AGENT_I "$WEIGHTS" $THRESH
