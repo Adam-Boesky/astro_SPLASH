@@ -42,10 +42,12 @@ def check_same_order(arr1: np.ndarray, arr2: np.ndarray, key: str = 'Tractor_ID'
     pass
 
 
-def normalize_arr(arr: np.ndarray, errors: np.ndarray = None, axis: int = 0) -> (float, float, float, Optional[np.ndarray]):
+def normalize_arr(arr: np.ndarray, errors: np.ndarray = None, axis: int = 0, mean: float = None, std: float = None) -> (float, float, float, Optional[np.ndarray]):
     """Normalize numpy array along given axis and its errors if given."""
-    mean = np.mean(arr, axis=axis, keepdims=True)
-    std = np.std(arr, axis=axis, keepdims=True)
+    if mean is None:
+        mean = np.mean(arr, axis=axis, keepdims=True)
+    if std is None:
+        std = np.std(arr, axis=axis, keepdims=True)
     if not errors is None:
         return (arr - mean) / std, mean[0], std[0], errors / std
     else:

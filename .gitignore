@@ -8,3 +8,4 @@ cluster_logs/
 /preprocessing/transients*/
 /preprocessing/database/
 .vscode/
+ps1_dir/*

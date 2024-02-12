@@ -1,16 +1,18 @@
 import os
 import pickle
+import numpy as np
 from pathlib import Path
 
 import torch
 
+from sklearn.model_selection import train_test_split
 from logger import get_clean_logger
 from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch,
-                        plot_real_v_preds, plot_training_loss, resume)
+                        plot_real_v_preds, plot_training_loss, resume, normalize_arr)
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose
-CLUSTER = True                  # Whether we are on the cluster or not
+CLUSTER = False                  # Whether we are on the cluster or not
 
 # Parameters for skipping different parts of this file
 SKIP_TRAINING = False
