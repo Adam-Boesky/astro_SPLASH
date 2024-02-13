@@ -77,6 +77,11 @@ def train():
     with open(f'/n/home04/aboesky/berger/Weird_Galaxies/rf_grid_search/results/results_{agent_i}.pkl', 'wb') as f:
         params = [thresh, cc_weight]
         pickle.dump((params, mean_purity), f)
+
+    with open(f'/n/home04/aboesky/berger/Weird_Galaxies/rf_grid_search/results_cms/results_{agent_i}.pkl', 'wb') as f_cm:
+        params = [thresh, cc_weight]
+        pickle.dump((params, cumulative_cm), f_cm)
+
     print(f'FINISHED AT TIME {datetime.datetime.now()}')
 
 

@@ -3,7 +3,7 @@
 #SBATCH -p shared
 #SBATCH -c 12                                       # Number of cores (-c)
 #SBATCH --mem=56G                                   # Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH -t 0-01:00                          # Runtime in D-HH:MM, minimum of 10 minutes
+#SBATCH -t 0-00:30                          # Runtime in D-HH:MM, minimum of 10 minutes
 
 # Paths to STDOUT or STDERR files should be absolute or relative to current working directory
 #SBATCH -o cluster_logs/myoutput_\%j.out                          # File to which STDOUT will be written, %j inserts jobid

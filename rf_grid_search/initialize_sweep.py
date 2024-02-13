@@ -18,7 +18,7 @@ LOG = get_clean_logger(logger_name = Path(__file__).name)
 
 # Make parameter grids
 weight_grid = ['balanced']
-w_vals = np.logspace(start=0, stop=3, base=2, num=4)
+w_vals = np.logspace(start=0, stop=3, base=2, num=3)
 for v1 in w_vals:
     for v2 in w_vals:
         for v3 in w_vals:
@@ -28,7 +28,7 @@ for v1 in w_vals:
                                         2: v2,
                                         3: v3,
                                         4: v4})
-thresh_grid = np.arange(0.1, 1.0, 0.1)
+thresh_grid = np.arange(0.1, 0.6, 0.1)
 
 
 def tune_parameters():
