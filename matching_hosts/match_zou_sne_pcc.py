@@ -173,11 +173,11 @@ def match_host_sne():
     n = len(sne)
 
     # Grab Zou data
-    with open(f'/Users/adamboesky/Research/ay98/clean_data/all_cat.pkl', 'rb') as f:
+    with open(os.path.join(PATH_TO_STORAGE, 'all_cat.pkl'), 'rb') as f:
         final_cat = pickle.load(f)
-    with open(f'/Users/adamboesky/Research/ay98/clean_data/all_photometry.pkl', 'rb') as f:
+    with open(os.path.join(PATH_TO_STORAGE, 'all_photometry.pkl'), 'rb') as f:
         final_photo = pickle.load(f)
-    gal_coords_arr = get_coords_for_ids(final_photo['gal_id'], lookup_table_path='/Users/adamboesky/Research/ay98/clean_data/coord_lookup_table.pkl')
+    gal_coords_arr = get_coords_for_ids(final_photo['gal_id'], lookup_table_path=os.path.join(PATH_TO_STORAGE, 'coord_lookup_table.pkl'))
     gal_coords = SkyCoord(gal_coords_arr['RA'] * u.deg, gal_coords_arr['DEC'] * u.deg, frame='icrs')
 
     # Headers for the all_res dataframe
@@ -230,7 +230,7 @@ def match_host_sne():
                     all_res = pd.concat((all_res, new_res), ignore_index = True)
  
                     # Log
-                    if all_res is not None and i % 1 == 0:
+                    if all_res is not None and i % 10 == 0:
                         LOG.info(f'Index = {i} / {n}, logging...')
                         all_res.to_csv(os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.csv'))
                         # ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.csv'), overwrite=True, format='ecsv')
