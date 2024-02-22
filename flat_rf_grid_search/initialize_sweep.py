@@ -36,6 +36,26 @@ for v1 in w_vals:
                                             3: v4,
                                             4: v5})
 
+# Make parameter grids
+new_weight_grid = ['balanced',
+               {0: 1,
+                1: 1,
+                2: 1,
+                3: 1,
+                4: 1}]
+w_vals = np.logspace(start=0, stop=5, base=2, num=6)
+for v1 in w_vals:
+    for v2 in w_vals:
+        for v3 in w_vals:
+            for v4 in w_vals:
+                for v5 in w_vals:
+                    if ~(v1 == v2 and v2==v3 and v3==v4 and v4 == v5): # don't look for equally weighted cases
+                        new_weight_grid.append({0: v1,
+                                            1: v2,
+                                            2: v3,
+                                            3: v4,
+                                            4: v5})
+
 
 def tune_parameters():
     """Tun the parameters with a grid search!"""
@@ -48,17 +68,18 @@ def tune_parameters():
 
     # Conduct grid search
     ps = []
-    for i, weights in enumerate(weight_grid):
+    for i, weights in enumerate(new_weight_grid):
+        if weights not in weight_grid:
 
-        LOG.info('Submitting agent %i', i)
+            LOG.info('Submitting agent %i', i)
 
-        # Open a pipe to the sbatch command.
-        os.environ['AGENT_I'] = str(i)
-        os.environ['WEIGHTS'] = str(weights)
+            # Open a pipe to the sbatch command.
+            os.environ['AGENT_I'] = str(i) + len(weight_grid)
+            os.environ['WEIGHTS'] = str(weights)
 
-        sbatch_command = f'sbatch --wait run_agent.sh'
-        proc = Popen(sbatch_command, shell=True)
-        ps.append(proc)
+            sbatch_command = f'sbatch --wait run_agent.sh'
+            proc = Popen(sbatch_command, shell=True)
+            ps.append(proc)
 
     exit_codes = [p.wait() for p in ps]  # wait for processes to finish
     return exit_codes
