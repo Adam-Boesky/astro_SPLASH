@@ -27,11 +27,11 @@ def train():
         X_train, y_train = pickle.load(f)
 
     # Retrieve grid parameters
-    agent_i = int(sys.argv[0])
-    max_bins = int(sys.argv[1])
-    num_iters = int(sys.argv[2])
-    learning_rate = float(sys.argv[3])
-    num_leaves = int(sys.argv(4))
+    agent_i = int(sys.argv[1])
+    max_bins = int(sys.argv[2])
+    num_iters = int(sys.argv[3])
+    learning_rate = float(sys.argv[4])
+    num_leaves = int(sys.argv[5])
 
     params = {
         'boosting_type': 'gbdt',

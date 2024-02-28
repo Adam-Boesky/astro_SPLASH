@@ -16,10 +16,10 @@ from logger import get_clean_logger
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)
 GRID_CONFIG = {
-    'max_bin': np.linspace(200, 1500, num=3),           # ***  [200 ---> 15000]
-    'num_iterations': np.linspace(100, 1000, num=4),    # ***  [100 ---> 1000]
-    'learning_rate': np.logspace(-4, -1, num=4),        # ***  [0.1  ---> 0.0001]
-    'num_leaves': np.linspace(30, 150, num=5)           # ***  [30 ---> 150]
+    'max_bin': np.linspace(200, 1500, num=3).astype(int),           # ***  [200 ---> 15000]
+    'num_iterations': np.linspace(100, 1000, num=4).astype(int),    # ***  [100 ---> 1000]
+    'learning_rate': np.logspace(-4, -1, num=4),                    # ***  [0.1  ---> 0.0001]
+    'num_leaves': np.linspace(30, 150, num=5).astype(int),          # ***  [30 ---> 150]
 }
 
 

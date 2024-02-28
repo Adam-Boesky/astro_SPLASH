@@ -1,13 +1,11 @@
 #!/bin/bash
 #
-#SBATCH -p shared
+#SBATCH -p test
 #SBATCH -n 1
 #SBATCH --mem-per-cpu=5G
-#SBATCH -t 1-00:00                          # Runtime in D-HH:MM, minimum of 10 minutes
-
-# Paths to STDOUT or STDERR files should be absolute or relative to current working directory
+#SBATCH -t 0-00:15                          # Runtime in D-HH:MM, minimum of 10 minutes Paths to STDOUT or STDERR files should be absolute or relative to current working directory
 #SBATCH -o /n/home04/aboesky/berger/Weird_Galaxies/gb_grid_search/cluster_logs/myoutput_%j.out                  # File to which STDOUT will be written, %j inserts jobid
-#SBATCH -e /n/home04/aboesky/berger/Weird_Galaxies/grid_search/cluster_logs/myerrors_%j.err                  # File to which STDERR will be written, %j inserts jobid
+#SBATCH -e /n/home04/aboesky/berger/Weird_Galaxies/gb_grid_search/cluster_logs/myerrors_%j.err                  # File to which STDERR will be written, %j inserts jobid
 
 # Remember:
 # The variable $TMPDIR points to the local hard disks in the computing nodes.
@@ -17,7 +15,7 @@
 # # Load modules
 # #################################
 module load python/3.10.12-fasrc01
-source activate wandb_env
+mamba activate lightgbm
 
 # # Commands
 # #############################
