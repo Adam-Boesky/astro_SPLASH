@@ -12,7 +12,7 @@ from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch,
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose
-CLUSTER = False                  # Whether we are on the cluster or not
+CLUSTER = True                  # Whether we are on the cluster or not
 
 # Parameters for skipping different parts of this file
 SKIP_TRAINING = False
@@ -56,6 +56,13 @@ def load_and_preprocess():
     cat = cat[z_local_mask]
     cat_err = cat_err[z_local_mask]
 
+    # Drop bad bands (ch1, mips, pacs100)
+    good_bands = [i for i, t in enumerate(all_photo['sorted_filters']) if t not in ['CH1', 'MIPS24', 'MIPS70', 'PACS100']]
+    all_photo['sorted_filters'] = [all_photo['sorted_filters'][i] for i in good_bands]
+    all_photo['sorted_wavelengths'] = [all_photo['sorted_wavelengths'][i] for i in good_bands]
+    photo = photo[:, good_bands]
+    photo_err = photo_err[:, good_bands]
+
 
     ######################## PRE PROCESSING ########################
     # Filter out nans
@@ -91,12 +98,12 @@ def train_and_store_nn():
 
     # Training parameters
     n_epochs = 1000
-    nodes_per_layer = [18, 15, 12, 9, 6, 4]
+    nodes_per_layer = [12, 9, 6, 4]
     num_linear_output_layers = 3
     learning_rate = 0.01
     batch_size = 4096
     torch.set_default_dtype(torch.float64)
-    model = get_model(num_inputs=18, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
+    model = get_model(num_inputs=14, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
     loss_fn = CustomLoss()
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
@@ -151,7 +158,7 @@ def train_and_store_nn():
             if test_loss < best_loss:
                 best_loss = test_loss
                 best_epoch = epoch
-                checkpoint(model, "/n/home04/aboesky/berger/Weird_Galaxies/best_model.pkl")
+                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_host_prop_best_model.pkl")
 
             # Early stopping
             elif epoch - best_epoch >= 50:
@@ -159,10 +166,10 @@ def train_and_store_nn():
                 break
 
         # Plot training performance
-        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/n/home04/aboesky/berger/Weird_Galaxies/host_prop_nn_training_plots/loss_v_epoch.png')
+        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_host_prop_nn_training_plots/loss_v_epoch.png')
 
     # Load best model
-    resume(model, '/n/home04/aboesky/berger/Weird_Galaxies/best_model.pkl')
+    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_host_prop_best_model.pkl')
 
 
     ######################## CHECK RESULTS AND STORE MODEL ########################
@@ -176,7 +183,7 @@ def train_and_store_nn():
         test_pred: torch.Tensor = model(torch.from_numpy(photo_test))
         test_pred_untrans = test_pred.detach().numpy()
         for idx in range(test_pred.shape[1]):
-            plot_real_v_preds(cat_test[:, idx] * cat_std[idx] + cat_mean[idx], test_pred_untrans[:, idx] * cat_std[idx] + cat_mean[idx], real_err=cat_err_test[:, idx] * cat_std[idx], param=all_cat['keys'][idx], plot_dirname='host_prop_nn_training_plots', filename_postfix=all_cat['keys'][idx])
+            plot_real_v_preds(cat_test[:, idx] * cat_std[idx] + cat_mean[idx], test_pred_untrans[:, idx] * cat_std[idx] + cat_mean[idx], real_err=cat_err_test[:, idx] * cat_std[idx], param=all_cat['keys'][idx], plot_dirname='V2_host_prop_nn_training_plots', filename_postfix=all_cat['keys'][idx])
 
 
 if __name__ == '__main__':
