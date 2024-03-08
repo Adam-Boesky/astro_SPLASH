@@ -55,6 +55,13 @@ def load_and_preprocess():
     photo_err = photo_err[z_local_mask]
     cat = cat[z_local_mask]
 
+    # Drop bad bands (ch1, mips, pacs100)
+    good_bands = [i for i, t in enumerate(all_photo['sorted_filters']) if t not in ['CH1', 'MIPS24', 'MIPS70', 'PACS100']]
+    all_photo['sorted_filters'] = [all_photo['sorted_filters'][i] for i in good_bands]
+    all_photo['sorted_wavelengths'] = [all_photo['sorted_wavelengths'][i] for i in good_bands]
+    photo = photo[:, good_bands]
+    photo_err = photo_err[:, good_bands]
+
 
     ######################## PRE PROCESSING ########################
     # Filter out nans
@@ -102,12 +109,12 @@ def train_and_store_nn():
 
     # Training parameters
     n_epochs = 1000
-    nodes_per_layer = [7, 9, 11, 13]
+    nodes_per_layer = [6, 7, 8]
     num_linear_output_layers = 1
     learning_rate = 0.001
     batch_size = 4096
     torch.set_default_dtype(torch.float64)
-    model = get_model(num_inputs=5, num_outputs=13, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
+    model = get_model(num_inputs=5, num_outputs=9, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
     loss_fn = CustomLoss()
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
@@ -162,7 +169,7 @@ def train_and_store_nn():
             if test_loss < best_loss:
                 best_loss = test_loss
                 best_epoch = epoch
-                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/best_sed_model.pkl")
+                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_best_sed_model.pkl")
 
             # Early stopping
             elif epoch - best_epoch >= 50:
@@ -170,10 +177,10 @@ def train_and_store_nn():
                 break
 
         # Plot training performance
-        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/Users/adamboesky/Research/ay98/Weird_Galaxies/sed_nn_training_plots/loss_v_epoch.png')
+        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_sed_nn_training_plots/loss_v_epoch.png')
 
     # Load best model
-    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/best_sed_model.pkl')
+    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_best_sed_model.pkl')
 
 
     ######################## CHECK RESULTS AND STORE MODEL ########################
@@ -191,7 +198,7 @@ def train_and_store_nn():
         for idx in range(test_pred.shape[1]):
             up_lim_mask = photo_y_test == 0.01
             photo_y_test[up_lim_mask] = photo_yerr_test[up_lim_mask]  # set the measurements back to upper limits for plotting
-            plot_real_v_preds(photo_y_test[:, idx] * photo_std[idx] + photo_mean[idx], test_pred_untrans[:, idx] * photo_std[idx] + photo_mean[idx], real_err=photo_yerr_test[:, idx] * photo_std[idx], param=f"log10({all_photo['sorted_filters'][5:][idx]}", plot_dirname='sed_nn_training_plots', filename_postfix=all_photo['sorted_filters'][5:][idx])
+            plot_real_v_preds(photo_y_test[:, idx] * photo_std[idx] + photo_mean[idx], test_pred_untrans[:, idx] * photo_std[idx] + photo_mean[idx], real_err=photo_yerr_test[:, idx] * photo_std[idx], param=f"log10({all_photo['sorted_filters'][5:][idx]}", plot_dirname='V2_sed_nn_training_plots', filename_postfix=all_photo['sorted_filters'][5:][idx])
 
 
 if __name__ == '__main__':
