@@ -16,7 +16,7 @@ from logger import get_clean_logger
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)
 GRID_CONFIG = {
-    'batch_size': [32, 64, 128, 256, 512, 1024, 2048, 4096],
+    'batch_size': [128, 256, 512, 1024, 2048, 4096],
     'nodes_per_layer': [
         [7],
         [6, 8],

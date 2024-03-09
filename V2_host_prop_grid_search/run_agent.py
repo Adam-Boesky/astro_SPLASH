@@ -14,8 +14,8 @@ from tempfile import TemporaryDirectory
 import torch
 
 from logger import get_clean_logger
-from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch,
-                        load_and_preprocess, resume)
+from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch, resume)
+from host_prop_nn import load_and_preprocess
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)
 
