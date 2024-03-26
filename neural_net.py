@@ -243,6 +243,17 @@ class CustomLoss(nn.Module):
         return torch.mean( torch.div((preds - targets) * (preds - targets), target_err) )
 
 
+class WeightedCustomLoss(nn.Module):
+    """A custom loss function. Basically the MSE but we divide by std"""
+    def __init__(self, exponent: float):
+        super(WeightedCustomLoss, self).__init__()
+        self.exponent = exponent
+
+    def forward(self, preds: torch.Tensor, targets: torch.Tensor, target_err: torch.Tensor, target_z: torch.Tensor) -> torch.Tensor:
+        z_weight = (1 - target_z) ** (self.exponent) + 0.05
+        return torch.mean( torch.div(z_weight * (preds - targets) * (preds - targets), target_err) )
+
+
 def ab_mag_to_flux(AB_mag: np.ndarray) -> np.ndarray:
     """Convert AB magnitude to flux"""
     return np.exp((AB_mag - 8.9) / -2.5) / 1000

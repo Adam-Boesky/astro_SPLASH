@@ -1,0 +1,69 @@
+"""Grid search to tune hyperparameters"""
+import ast
+import os
+import shutil
+import sys
+from itertools import product
+from subprocess import PIPE, Popen
+
+import numpy as np
+
+sys.path.append('/n/home04/aboesky/berger/Weird_Galaxies')
+
+from pathlib import Path
+
+from logger import get_clean_logger
+
+LOG = get_clean_logger(logger_name = Path(__file__).name)
+GRID_CONFIG = {
+    'batch_size': [256, 512, 1024, 2048, 4096],
+    'nodes_per_layer': [
+        [14, 10, 6],
+        [15, 12, 9, 6],
+        [15, 13, 10, 8, 5],
+        [15, 13, 11, 9, 7, 5],
+        [18, 15, 12, 9, 6, 4]
+    ],
+    'num_linear_output_layers': [2,3],
+    'learning_rate': np.linspace(0.01, 1.0, num=5),
+    'weight_exp': [2, 4, 6, 8]
+}
+
+
+def tune_parameters():
+    """Tun the parameters with a grid search!"""
+
+    # Set up resutls directory
+    if os.path.exists('/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results') and os.path.isdir('/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results'):
+        shutil.rmtree('/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results')
+    os.mkdir('/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results')
+
+    # Conduct grid search
+    ps = []
+    for i, (batch_size, nodes_per_layer, num_linear_output_layers, learning_rate, wexp) in enumerate(product(
+        GRID_CONFIG['batch_size'], 
+        GRID_CONFIG['nodes_per_layer'],
+        GRID_CONFIG['num_linear_output_layers'], 
+        GRID_CONFIG['learning_rate'],
+        GRID_CONFIG['weight_exp'])):
+
+        LOG.info('Submitting agent %i', i)
+
+        # Open a pipe to the sbatch command.
+        os.environ['AGENT_I'] = str(i)
+        os.environ['BATCH_SIZE'] = str(batch_size)
+        os.environ['NODES_PER_LAYER'] = str(nodes_per_layer)
+        os.environ['NUM_LINEAR_OUTPUT_LAYERS'] = str(num_linear_output_layers)
+        os.environ['LEARNING_RATE'] = str(learning_rate)
+        os.environ['WEXP'] = str(wexp)
+
+        sbatch_command = f'sbatch --wait run_agent.sh'
+        proc = Popen(sbatch_command, shell=True)
+        ps.append(proc)
+
+    exit_codes = [p.wait() for p in ps]  # wait for processes to finish
+    return exit_codes 
+
+
+if __name__ == '__main__':
+    tune_parameters()

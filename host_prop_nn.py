@@ -7,12 +7,12 @@ import torch
 
 from sklearn.model_selection import train_test_split
 from logger import get_clean_logger
-from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch,
+from neural_net import (WeightedCustomLoss, CustomLoss, checkpoint, get_model, get_tensor_batch,
                         plot_real_v_preds, plot_training_loss, resume, normalize_arr)
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose
-CLUSTER = True                  # Whether we are on the cluster or not
+CLUSTER = False                  # Whether we are on the cluster or not
 
 # Parameters for skipping different parts of this file
 SKIP_TRAINING = False
@@ -51,17 +51,19 @@ def load_and_preprocess():
     LOG.info('Importing photometry data')
     # Filter out z>1
     z_local_mask = cat[:, 2] <= 1
+    # add additional filter for potentially bad bands
+    z_local_mask &= cat[:, 2] > 0.0126
     photo = photo[z_local_mask]
     photo_err = photo_err[z_local_mask]
     cat = cat[z_local_mask]
     cat_err = cat_err[z_local_mask]
 
     # Drop bad bands (ch1, mips, pacs100)
-    good_bands = [i for i, t in enumerate(all_photo['sorted_filters']) if t not in ['CH1', 'MIPS24', 'MIPS70', 'PACS100']]
-    all_photo['sorted_filters'] = [all_photo['sorted_filters'][i] for i in good_bands]
-    all_photo['sorted_wavelengths'] = [all_photo['sorted_wavelengths'][i] for i in good_bands]
-    photo = photo[:, good_bands]
-    photo_err = photo_err[:, good_bands]
+    # good_bands = [i for i, t in enumerate(all_photo['sorted_filters']) if t not in ['CH1', 'MIPS24', 'MIPS70', 'PACS100']]
+    # all_photo['sorted_filters'] = [all_photo['sorted_filters'][i] for i in good_bands]
+    # all_photo['sorted_wavelengths'] = [all_photo['sorted_wavelengths'][i] for i in good_bands]
+    # photo = photo[:, good_bands]
+    # photo_err = photo_err[:, good_bands]
 
 
     ######################## PRE PROCESSING ########################
@@ -98,13 +100,20 @@ def train_and_store_nn():
 
     # Training parameters
     n_epochs = 1000
-    nodes_per_layer = [12, 9, 6, 4]
+    # V1: [4096, [18, 15, 12, 9, 6, 4], 3, 0.01]
+    batch_size = 4096
+    nodes_per_layer = [18, 15, 12, 9, 6, 4]
     num_linear_output_layers = 3
     learning_rate = 0.01
-    batch_size = 4096
+    loss_fn = WeightedCustomLoss()
+    # # V2 GOOD BANDS
+    # nodes_per_layer = [12, 10, 8, 6, 4]
+    # num_linear_output_layers = 3
+    # learning_rate = 0.001
+    # batch_size = 1024
+    # loss_fn = CustomLoss()
     torch.set_default_dtype(torch.float64)
-    model = get_model(num_inputs=14, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
-    loss_fn = CustomLoss()
+    model = get_model(num_inputs=18, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
@@ -137,7 +146,7 @@ def train_and_store_nn():
                 # Predict and gradient descent
                 model.train()
                 cat_pred = model(photo_batch)
-                loss = loss_fn(cat_pred, cat_batch, cat_err_batch)
+                loss = loss_fn(cat_pred, cat_batch, cat_err_batch, (cat_batch[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
                 epoch_loss += loss.item()
                 optimizer.zero_grad()
                 loss.backward()
@@ -150,7 +159,7 @@ def train_and_store_nn():
             model.eval()
             losses_per_epoch['train'].append(avg_train_loss)
             test_pred = model(torch.from_numpy(photo_test))
-            test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test))
+            test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test), torch.from_numpy(cat_test[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
             losses_per_epoch['test'].append(test_loss.item())
             LOG.info('Epoch %i/%i finished with avg training loss = %.3f', epoch + 1, n_epochs, avg_train_loss)
 
@@ -158,7 +167,7 @@ def train_and_store_nn():
             if test_loss < best_loss:
                 best_loss = test_loss
                 best_epoch = epoch
-                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_host_prop_best_model.pkl")
+                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/powlaw_n6_weighted_host_prop_best_model.pkl")
 
             # Early stopping
             elif epoch - best_epoch >= 50:
@@ -169,7 +178,7 @@ def train_and_store_nn():
         plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_host_prop_nn_training_plots/loss_v_epoch.png')
 
     # Load best model
-    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/V2_host_prop_best_model.pkl')
+    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/powlaw_n6_weighted_host_prop_best_model.pkl')
 
 
     ######################## CHECK RESULTS AND STORE MODEL ########################

@@ -13,7 +13,7 @@ from neural_net import (CustomLoss, checkpoint, get_model, get_tensor_batch,
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose
-CLUSTER = True                  # Whether we are on the cluster or not
+CLUSTER = False                  # Whether we are on the cluster or not
 
 # Parameters for skipping different parts of this file
 SKIP_TRAINING = False
@@ -109,10 +109,10 @@ def train_and_store_nn():
 
     # Training parameters
     n_epochs = 1000
-    nodes_per_layer = [6, 7, 8]
-    num_linear_output_layers = 1
-    learning_rate = 0.001
-    batch_size = 4096
+    nodes_per_layer = [6, 7, 7, 8]
+    num_linear_output_layers = 2
+    learning_rate = 9.999999999999999e-05
+    batch_size = 256
     torch.set_default_dtype(torch.float64)
     model = get_model(num_inputs=5, num_outputs=9, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
     loss_fn = CustomLoss()
