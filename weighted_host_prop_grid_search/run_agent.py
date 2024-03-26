@@ -41,6 +41,7 @@ def train():
     torch.set_default_dtype(torch.float64)
     model = get_model(num_inputs=18, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
     loss_fn = WeightedCustomLoss(exponent=weight_exp)
+    reg_loss_fn = CustomLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
 
@@ -56,7 +57,7 @@ def train():
     best_epoch = -1
 
     # Training loop
-    losses_per_epoch = {'train': [], 'test': []}
+    losses_per_epoch = {'train': [], 'test': [], 'unweighted': []}
 
     # Temporary directory to store state in
     tmp_dir = TemporaryDirectory()
@@ -88,7 +89,9 @@ def train():
         losses_per_epoch['train'].append(avg_train_loss)
         test_pred = model(torch.from_numpy(photo_test))
         test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test), torch.from_numpy(cat_test[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
+        reg_test_loss = reg_loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test))
         losses_per_epoch['test'].append(test_loss.item())
+        losses_per_epoch['unweighted'].append(reg_test_loss.item())
         LOG.info('Epoch %i/%i finished with avg training loss = %.3f', epoch + 1, n_epochs, avg_train_loss)
 
         # Always store best model
@@ -108,7 +111,7 @@ def train():
     tmp_dir.cleanup()
 
     with open(f'/n/home04/aboesky/berger/Weird_Galaxies/weighted_host_prop_grid_search/results/results_{agent_i}.pkl', 'wb') as f:
-        params = [learning_rate, num_linear_output_layers, nodes_per_layer, batch_size]
+        params = [learning_rate, num_linear_output_layers, nodes_per_layer, batch_size, weight_exp]
         pickle.dump((params, losses_per_epoch), f)
     print(f'FINISHED AT TIME {datetime.datetime.now()}')
 
