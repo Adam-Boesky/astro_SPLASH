@@ -77,7 +77,7 @@ def train():
             # Predict and gradient descent
             model.train()
             cat_pred = model(photo_batch)
-            loss = loss_fn(cat_pred, cat_batch, cat_err_batch)
+            loss = loss_fn(cat_pred, cat_batch, cat_err_batch, (cat_batch[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
             epoch_loss += loss.item()
             optimizer.zero_grad()
             loss.backward()
@@ -87,7 +87,7 @@ def train():
         model.eval()
         losses_per_epoch['train'].append(avg_train_loss)
         test_pred = model(torch.from_numpy(photo_test))
-        test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test))
+        test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test), torch.from_numpy(cat_test[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
         losses_per_epoch['test'].append(test_loss.item())
         LOG.info('Epoch %i/%i finished with avg training loss = %.3f', epoch + 1, n_epochs, avg_train_loss)
 
@@ -107,7 +107,7 @@ def train():
     LOG.info('!!!Finished Training!!!')
     tmp_dir.cleanup()
 
-    with open(f'/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results/results_{agent_i}.pkl', 'wb') as f:
+    with open(f'/n/home04/aboesky/berger/Weird_Galaxies/weighted_host_prop_grid_search/results/results_{agent_i}.pkl', 'wb') as f:
         params = [learning_rate, num_linear_output_layers, nodes_per_layer, batch_size]
         pickle.dump((params, losses_per_epoch), f)
     print(f'FINISHED AT TIME {datetime.datetime.now()}')

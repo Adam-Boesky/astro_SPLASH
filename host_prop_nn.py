@@ -12,7 +12,7 @@ from neural_net import (WeightedCustomLoss, CustomLoss, checkpoint, get_model, g
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose
-CLUSTER = False                  # Whether we are on the cluster or not
+CLUSTER = True                  # Whether we are on the cluster or not
 
 # Parameters for skipping different parts of this file
 SKIP_TRAINING = False

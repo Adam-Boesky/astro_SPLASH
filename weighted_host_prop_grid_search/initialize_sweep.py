@@ -34,9 +34,9 @@ def tune_parameters():
     """Tun the parameters with a grid search!"""
 
     # Set up resutls directory
-    if os.path.exists('/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results') and os.path.isdir('/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results'):
-        shutil.rmtree('/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results')
-    os.mkdir('/Users/adamboesky/Research/ay98/Weird_Galaxies/weighted_host_prop_grid_search/results')
+    if os.path.exists('/n/home04/aboesky/berger/Weird_Galaxies/weighted_host_prop_grid_search/results') and os.path.isdir('/n/home04/aboesky/berger/Weird_Galaxies/weighted_host_prop_grid_search/results'):
+        shutil.rmtree('/n/home04/aboesky/berger/Weird_Galaxies/weighted_host_prop_grid_search/results')
+    os.mkdir('/n/home04/aboesky/berger/Weird_Galaxies/weighted_host_prop_grid_search/results')
 
     # Conduct grid search
     ps = []
