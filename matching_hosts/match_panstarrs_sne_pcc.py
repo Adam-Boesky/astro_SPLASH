@@ -40,7 +40,7 @@ LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful lo
 # os.mkdir = 'ps1_dir'
 PS1FILENAME = "https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
 FITSCUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
-CLUSTER = True
+CLUSTER = False
 
 if CLUSTER:
     PATH_TO_STORAGE = '/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/'
@@ -239,7 +239,7 @@ def get_host_coords(sn_ra: float, sn_dec: float, sn_z: float) -> (float, float):
             ## the equation from Edo's paper
             sigma_m = (1/(0.33*np.log(10)))*10**(0.33*(m_app-24)-2.44)
 
-            ## r50 is an array of half light radii for all detected objects in the frame
+            ## r50 is an array of half light radii for all detected objects in the frame (0.25 is because it's 0.25''/pixel)
             r50 = cat.fluxfrac_radius(0.5).value * 0.25
 
             ## r is an array of distance from the SN location to the centroid of each detected object

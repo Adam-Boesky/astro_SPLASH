@@ -43,7 +43,7 @@ LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful lo
 # os.mkdir = 'ps1_dir'
 PS1FILENAME = "https://ps1images.stsci.edu/cgi-bin/ps1filenames.py"
 FITSCUT = "https://ps1images.stsci.edu/cgi-bin/fitscut.cgi"
-CLUSTER = True
+CLUSTER = False
 
 if CLUSTER:
     PATH_TO_STORAGE = '/n/holystore01/LABS/berger_lab/Users/aboesky/Weird_Galaxies/'
@@ -101,7 +101,7 @@ def filter_sne_for_Zou(sne: pd.DataFrame) -> pd.DataFrame:
     min_sep = np.min(field_seps, axis=1)
 
     # Only select sne that are within 4 degrees of the field, classified, and are not nans
-    max_field_raidus = 4  # 1.3 is the approximate radius of the depe field, but we'll use 4 to be conservative
+    max_field_raidus = 2.5  # 1.3 is the approximate radius of the deep field, but we'll use more to be conservative
     in_field_mask = min_sep < max_field_raidus
     classified_mask = sne[in_field_mask]['claimedtype'] != 'Candidate'
     nan_mask = sne[in_field_mask][classified_mask]['claimedtype'].to_numpy().astype(str) == 'nan'
@@ -129,10 +129,10 @@ def get_current_data():
 
     # If the associate table already exists, pick up from the end of the already associated hosts
     LOG.info('Getting the index of the last host in saved table')
-    if os.path.exists(os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.ecsv')):
+    if os.path.exists(os.path.join(PATH_TO_STORAGE, 'classified_zou_hosts_pcc.ecsv')):
 
         # Get the index of the last already associated SN
-        all_res = pd.read_csv(os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.csv'))
+        all_res = pd.read_csv(os.path.join(PATH_TO_STORAGE, 'classified_zou_hosts_pcc.csv'))
         last_ra, last_dec = all_res[-1]['SN_ra'], all_res[-1]['SN_dec']
         col_types = {col: all_res[col].dtype for col in all_res.columns}
         for i, sn_ra, sn_dec in zip(range(n), sne['ra'], sne['dec']):
@@ -165,6 +165,31 @@ def get_mean_of_strs(s: str) -> float:
         return np.nanmean(arr)
 
 
+def get_host_coords_fixed_r(sn_ra, sn_dec, gal_coords, flux):
+    """Use probability of chance coincidence to match SNe to a host"""
+    # Cast everything to a np array
+    sn_ra = np.array(sn_ra)
+    sn_dec = np.array(sn_dec)
+
+    # Grab the mags for the band that we care about (default 'r')
+    m_app = -2.5*np.log10(flux) + 24.68
+
+    # The equation from Edo's paper
+    sigma_m = (1 / (0.33 * np.log(10))) * 10**(0.33 * (m_app - 24) - 2.44)  # approximate surface density of galaxies [n / arcsec^2]
+    r50 = 1  # minimum radius for resolution in arcseconds
+
+    # r is an array of distance from the SN location to the centroid of each detected object
+    r = np.sqrt((gal_coords.ra.arcsec - sn_ra)**2 + (gal_coords.dec.arcsec - sn_dec)**2)
+
+    # Mo uncertainties, so this is the effective radius for each object
+    R_e = np.sqrt(r**2 + 4*r50**2)
+
+    # Probability of chance coincidence
+    P_cc = 1-np.exp(-np.pi*R_e**2*sigma_m)
+
+    return P_cc, r
+
+
 def match_host_sne():
     """Match the sne to host galaxies in the panstarrs databse and save files."""
 
@@ -188,60 +213,75 @@ def match_host_sne():
     all_headers = ['gal_id', 'host_ra', 'host_dec', 'SN_ra', 'SN_dec'] + photo_headers + photo_err_headers + prop_headers + prop_err_headers
 
     # Get the host candidate coords
+    test = []
+    test_coords = []
+    test_seps = []
     for i, sn_ra, sn_dec, sn_z, sn_class in zip(range(n)[last_searched_ind + 1:], sne['ra'][last_searched_ind + 1:], sne['dec'][last_searched_ind + 1:], sne['redshift'][last_searched_ind + 1:], sne['claimedtype'][last_searched_ind + 1:]):
         if isinstance(sn_class, str) and sn_class != 'Candidate':  # only do the search if the SN is classified!!!
 
             # Convert SN coords to degrees
-            sn_ra_ang = Angle(sn_ra.split(',')[0], unit='hourangle').deg
-            sn_dec_ang = Angle(f'{sn_dec.split(",")[0]} degrees').deg
+            sn_ra_ang = Angle(sn_ra.split(',')[0], unit='hourangle').arcsec
+            sn_dec_ang = Angle(f'{sn_dec.split(",")[0]} degrees').arcsec
 
             # Get the host coordinates
             sn_z = get_mean_of_strs(sn_z)
-            host_ras, host_decs, host_P_ccs = get_host_coords(sn_ra_ang, sn_dec_ang, sn_z)
-            if len(host_ras) != 0:  # if we find a host
-                host_ra = host_ras[0]       # first one is the host!
-                host_dec = host_decs[0]     # first one is the host!
-                host_coord = SkyCoord(host_ra * u.deg, host_dec * u.deg, frame='icrs')
-                LOG.info(f'SN @ {sn_ra_ang, sn_dec_ang}, z={sn_z}: \t \t {len(host_ras)} candidates found with P_cc < 0.1')
+            # host_ras, host_decs, host_P_ccs = get_host_coords(sn_ra_ang, sn_dec_ang, sn_z)
+            host_P_ccs, seps = get_host_coords_fixed_r(sn_ra_ang, sn_dec_ang, gal_coords, final_photo['data'][:, final_photo['sorted_filters'].index('R')].flatten())
+            test.append(min(host_P_ccs))
+            host_P_ccs = np.array(host_P_ccs)
+            test_coords.append((sn_ra_ang, sn_dec_ang))
+            test_seps.append(seps[np.argmin(host_P_ccs)])
+            print(host_P_ccs[host_P_ccs < 0.1])
+    #         if len(host_ras) != 0:  # if we find a host
+    #             host_ra = host_ras[0]       # first one is the host!
+    #             host_dec = host_decs[0]     # first one is the host!
+    #             host_coord = SkyCoord(host_ra * u.deg, host_dec * u.deg, frame='icrs')
+    #             LOG.info(f'SN @ {sn_ra_ang, sn_dec_ang}, z={sn_z}: \t \t {len(host_ras)} candidates found with P_cc < 0.1')
 
-                # Only keep the host if the host is in the Zou dataset
-                seps_to_Zou = host_coord.separation(gal_coords).arcsec  # angular separations from Zou galaxies
-                smallest_sep = np.min(seps_to_Zou)
-                smallest_sep_ind = np.argmin(seps_to_Zou)
-                if smallest_sep < 1:  # if the host is within 1 arcsec of a Zou galaxy, it's a Zou galaxy
-                    LOG.info(f'Found a host in the Zou catalog.')
+    #             # Only keep the host if the host is in the Zou dataset
+    #             seps_to_Zou = host_coord.separation(gal_coords).arcsec  # angular separations from Zou galaxies
+    #             smallest_sep = np.min(seps_to_Zou)
+    #             smallest_sep_ind = np.argmin(seps_to_Zou)
+    #             if smallest_sep < 1:  # if the host is within 1 arcsec of a Zou galaxy, it's a Zou galaxy
+    #                 LOG.info(f'Found a host in the Zou catalog.')
 
-                    # Construct a new results to append to the df
-                    new_res = {'gal_id': [final_photo['gal_id'][smallest_sep_ind]],
-                               'host_ra': [host_ra],
-                               'host_dec': [host_dec],
-                               'SN_ra': [sn_ra_ang],
-                               'SN_dec': [sn_dec_ang]
-                               }
-                    for i, wl in enumerate(photo_headers):  # photometry stuff
-                        new_res[wl] = [final_photo['data'][smallest_sep_ind][i]]
-                        new_res[wl+'_err'] = [final_photo['data_err'][smallest_sep_ind][i]]
-                    for i, propname in enumerate(prop_headers):  # property stuff
-                        new_res[propname] = [final_cat['data'][smallest_sep_ind][i]]
-                        new_res[propname+'_err'] = [final_cat['data_err'][smallest_sep_ind][i]]
+    #                 # Construct a new results to append to the df
+    #                 new_res = {'gal_id': [final_photo['gal_id'][smallest_sep_ind]],
+    #                            'host_ra': [host_ra],
+    #                            'host_dec': [host_dec],
+    #                            'SN_ra': [sn_ra_ang],
+    #                            'SN_dec': [sn_dec_ang],
+    #                            'SN_class': [sn_class]
+    #                            }
+    #                 for i, wl in enumerate(photo_headers):  # photometry stuff
+    #                     new_res[wl] = [final_photo['data'][smallest_sep_ind][i]]
+    #                     new_res[wl+'_err'] = [final_photo['data_err'][smallest_sep_ind][i]]
+    #                 for i, propname in enumerate(prop_headers):  # property stuff
+    #                     new_res[propname] = [final_cat['data'][smallest_sep_ind][i]]
+    #                     new_res[propname+'_err'] = [final_cat['data_err'][smallest_sep_ind][i]]
 
-                    # Append to df
-                    new_res = pd.DataFrame(new_res)
-                    all_res = pd.concat((all_res, new_res), ignore_index = True)
+    #                 # Append to df
+    #                 new_res = pd.DataFrame(new_res)
+    #                 if all_res is None:
+    #                     all_res = new_res
+    #                 else:
+    #                     all_res = pd.concat((all_res, new_res), ignore_index = True)
  
-                    # Log
-                    if all_res is not None and i % 10 == 0:
-                        LOG.info(f'Index = {i} / {n}, logging...')
-                        all_res.to_csv(os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.csv'))
-                        # ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.csv'), overwrite=True, format='ecsv')
-                else:
-                    LOG.info(f'Host not in the Zou catalog.')
+    #                 # Log
+    #                 if all_res is not None and i % 10 == 0:
+    #                     LOG.info(f'Index = {i} / {n}, logging...')
+    #                     all_res.to_csv(os.path.join(PATH_TO_STORAGE, 'classified_zou_hosts_pcc.csv'))
+    #                     # ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.csv'), overwrite=True, format='ecsv')
+    #             else:
+    #                 LOG.info(f'Host not in the Zou catalog.')
 
-    # Log when done
-    LOG.info(f'Done with search ({i} / {n})!!! Logging...')
-    all_res.to_csv(os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.csv'))
-    # ascii.write(all_res, os.path.join(PATH_TO_STORAGE, 'zou_hosts_pcc.csv'), overwrite=True, format='ecsv')
-
+    # # Log when done
+    # LOG.info(f'Done with search ({i} / {n})!!! Logging...')
+    # all_res.to_csv(os.path.join(PATH_TO_STORAGE, 'classified_zou_hosts_pcc.csv'))
+    print(test)
+    print(test_coords)
+    print(test_seps)
+    test = np.array(test)
 
 if __name__=='__main__':
     match_host_sne()
