@@ -12,4 +12,4 @@ ps1_dir/*
 dist/
 *.egg-info
 *.pkl
-git
+
