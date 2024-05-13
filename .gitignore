@@ -9,3 +9,7 @@ cluster_logs/
 /preprocessing/database/
 .vscode/
 ps1_dir/*
+dist/
+*.egg-info
+*.pkl
+git
