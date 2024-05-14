@@ -1,9 +1,11 @@
 import os
+import bz2
 import torch
 import pickle
 import numpy as np
 
 from typing import Tuple
+from sklearn.impute import KNNImputer, MissingIndicator
 from .network_utils import resume, get_model
 
 torch.set_default_dtype(torch.float64)  # set the pytorch default to a float64
@@ -12,6 +14,7 @@ MODELS_DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 
 class Splash_Pipeline:
     """Our classification pipeline. The defaul pipeline classifies supernovae with a 3-step process:
+            0. Impute the nan values of the given photometry and errors.
             1. Given grizy photometry of a SN host, conduct domain transfer by predicted 13 more
                photometric bands with an MLP.
             2. Predict the SN host's stellar mass, SFR, and redshift from its 18-band photometry
@@ -26,7 +29,7 @@ class Splash_Pipeline:
             Star Formation Rate [log(solar masses/yr)]
             Redshift            [redshift]
     """
-    def __init__(self, pipeline_version: str = 'weighted_full_band', pre_transformed: bool = False, within_4sigma: bool = True, random_seed: int = 22):
+    def __init__(self, pipeline_version: str = 'weighted_full_band', pre_transformed: bool = False, within_4sigma: bool = True, nan_thresh_ratio: int = 0.5, random_seed: int = 22):
 
         # Get users choice of host prop predictor
         if pipeline_version not in ['full_band', 'best_band', 'weighted_full_band']:
@@ -50,7 +53,12 @@ class Splash_Pipeline:
             host_prop_hyperparams = {'num_inputs': 14, 'num_outputs': 3, 'nodes_per_layer': [12, 10, 8, 6, 4], 'num_linear_output_layers': 3,
                                      'weights_fname':  os.path.join(MODELS_DIR_PATH, 'trained_models/V2_host_prop_best_model.pkl')}
 
-        # Import domain transfer MLP, host prop NN, and classifier
+        # Import imputer, domain transfer MLP, host prop NN, and classifier
+        # 0. KNN imputers
+        with open('/Users/adamboesky/Research/ay98/Weird_Galaxies/SPLASH/trained_models/knn_imputers.pkl', 'rb') as f:
+            (photo_imputer, photoerr_imputer) = pickle.load(f)
+            self.photo_imputer: KNNImputer = photo_imputer
+            self.photoerr_imputer: KNNImputer = photoerr_imputer
         # 1. Domain transfer network
         self.domain_transfer_net = get_model(num_inputs=domain_transfer_hyperparams['num_inputs'], num_outputs=domain_transfer_hyperparams['num_outputs'], nodes_per_layer=domain_transfer_hyperparams['nodes_per_layer'], num_linear_output_layers=domain_transfer_hyperparams['num_linear_output_layers'])
         resume(self.domain_transfer_net, domain_transfer_hyperparams['weights_fname'])
@@ -60,9 +68,12 @@ class Splash_Pipeline:
         resume(self.property_predicting_net, host_prop_hyperparams['weights_fname'])
         self.property_predicting_net.eval()
         # 3. Classifier
-        with open(os.path.join(MODELS_DIR_PATH, 'trained_models/rf_classifier.pkl'), 'rb') as f:
+        with bz2.BZ2File(os.path.join(MODELS_DIR_PATH, 'trained_models/rf_classifier.pbz2'), 'rb') as f:
             self.random_forest = pickle.load(f)
 
+        # Pipeline configuration
+        self.nan_thresh_ratio = nan_thresh_ratio                                                    # the maximum proprotion of nan photometric measurements we will impute
+        self.nan_indicators = None                                                                  # a matrix of indicators for nans before imputation
         self.pre_transformed = pre_transformed                                                      # whether data is pre-transformed by user or not
         self.host_props = None                                                                      # variable for storing host props
         self.within_4sigma = within_4sigma                                                          # only return classes for galaxies within 4 sigma of train data (return -1 if outside)
@@ -77,6 +88,20 @@ class Splash_Pipeline:
                             0.50050502, 0.43821229, 0.46058673, 2.21595863, 2.13270738,
                             2.02278681, 0.67246779, 0.70040306])
         np.random.seed(random_seed)                                                                 # why 22? my lucky number
+
+
+    def _check_nans(self, arr: np.ndarray):
+        """Raise an error if the given arr has a ratio of nans greater than self.nan_thresh_ratio.
+
+        Args:
+            arr (np.ndarray): The array we want to check NaNs from.
+        """
+        nan_counts = np.isnan(arr).sum(axis=1)
+        nan_ratios = nan_counts / arr.shape[-1]
+
+        if np.any(nan_ratios > self.nan_thresh_ratio):
+            raise ValueError(f'The ratio of NaNs to total values exceeds the acceptable ratio of {self.nan_thresh_ratio} for some \
+                             photometry. Please handle these values before passing into the pipeline.')
 
 
     def _transfer_domain(self, X_grizy: np.ndarray) -> np.ndarray:
@@ -142,6 +167,17 @@ class Splash_Pipeline:
         return (X - self.mu_props) / self.std_props
 
 
+    def _impute_photometry(self, photo: np.ndarray, photoerr: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Impute the photometry.
+
+        Args:
+            photo (np.ndarray): grizy data.
+            photoerr (np.ndarray): grizy errors.
+        """
+        self.nan_indicator_matrix = MissingIndicator(missing_values=np.NaN, features="all").fit_transform(photo)
+        return self.photo_imputer.transform(photo), self.photoerr_imputer.transform(photoerr)
+
+
     def predict_host_properties(self, X_grizy: np.ndarray, X_grizy_err: np.ndarray = None, n_resamples: int = 10, return_normalized: bool = False) -> np.ndarray:
         """Predict the mass, SFR, and redshift of host galaxies from their photometry. Based on the dimensions of 
         the given photometry, this function will either conduct domain transfer or not.
@@ -160,20 +196,17 @@ class Splash_Pipeline:
             in an (n, 3) np.ndarray.
         """
 
-        # If we already predicted props just return
-        if self.host_props is not None:
-            if return_normalized:
-                return self._tranform_properties(self.host_props)
-            return self.host_props
-
-        # Check grizy dimensions
+        # Check nans and grizy dimensions
+        self._check_nans(X_grizy)
         if X_grizy.shape[1] not in [5, 18]:
             raise ValueError(f'Input grizy dimensions are {X_grizy.shape} when they should be either (n, 5) or (n, 18).')
 
         # Boolean for if we are doing domain transfer
         domain_transfer = (X_grizy.shape[1] == 5)
 
-        # Log transform and normalize the data if necessary
+        # Preprocess the data
+        if self.version != 'best_band' and domain_transfer:  # imputation not implemented for best_band version
+            X_grizy, X_grizy_err = self._impute_photometry(X_grizy, X_grizy_err)
         if not self.pre_transformed:
             X_grizy, X_grizy_err = self._transform_photometry(X_grizy, X_grizy_err, just_grizy=domain_transfer)
 

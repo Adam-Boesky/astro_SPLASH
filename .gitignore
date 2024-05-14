@@ -1,4 +1,4 @@
-.DS_Store
+*.DS_Store
 __pycache__/
 *.log
 wandb/
@@ -12,4 +12,4 @@ ps1_dir/*
 dist/
 *.egg-info
 *.pkl
-
+!SPLASH/trained_models/*

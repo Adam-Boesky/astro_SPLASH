@@ -21,7 +21,7 @@ from sklearn.impute import KNNImputer
 from logger import get_clean_logger
 
 SURVEY = 'wcdfs'
-LOG = get_clean_logger(logger_name = Path(__file__).name, log_filename=f'/Users/adamboesky/Research/ay98/Weird_Galaxies/preprocessing/preprocessing_{SURVEY}.log')
+LOG = get_clean_logger(logger_name = Path(__file__).name, log_filename=f'/Users/adamboesky/Research/ay98/Weird_Galaxies/Paper/preprocessing/preprocessing_{SURVEY}.log')
 PATH_TO_DATA = '/Volumes/T7/ay_98_data/Zou_data'
 PATH_TO_TRAINING_DATA = 'Volumes/T7/ay_98_data/pickled_data'
 FILTER_WAVELENGTHS = {
