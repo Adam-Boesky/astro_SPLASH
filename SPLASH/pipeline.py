@@ -76,6 +76,7 @@ class Splash_Pipeline:
         self.nan_indicators = None                                                                  # a matrix of indicators for nans before imputation
         self.pre_transformed = pre_transformed                                                      # whether data is pre-transformed by user or not
         self.host_props = None                                                                      # variable for storing host props
+        self.host_props_err = None                                                                  # errors on above
         self.within_4sigma = within_4sigma                                                          # only return classes for galaxies within 4 sigma of train data (return -1 if outside)
         self.mu_props = np.array([8.87088133, -0.46037044, 0.58991822])                             # means of the train props
         self.std_props = np.array([1.08494612, 1.04024203, 0.2700682 ])                             # stds of the train props
@@ -194,8 +195,9 @@ class Splash_Pipeline:
             n_resamples (int): The number of samples we should produce if we are going to resample from the
                 photemetry with its given error.
         Returns:
-            Stellar mass [log10(solar masses)], SFR [log10(solar masses / yr)], and redshift of the given galaxies
-            in an (n, 3) np.ndarray.
+            1. Stellar mass [log10(solar masses)], SFR [log10(solar masses / yr)], and redshift of the given galaxies
+               in an (n, 3) np.ndarray.
+            2. The uncertainties on the above properties as the standard deviation across the resamples inferences.
         """
 
         # Check nans and grizy dimensions
@@ -239,12 +241,12 @@ class Splash_Pipeline:
             # Predict host properties
             host_props_norm = self.property_predicting_net(torch.from_numpy(X_grizy)).detach().numpy()
             host_props_err_norm = None
-        self.host_props = self._inverse_tranform_properties(host_props_norm)
+        self.host_props, self.host_props_err = self._inverse_tranform_properties(host_props_norm, X_err=host_props_err_norm)
 
         if return_normalized:
-            return host_props_norm
+            return host_props_norm, host_props_err_norm
         else:
-            return self.host_props
+            return self.host_props, self.host_props_err
 
 
     def predict_classes(self, X_grizy: np.ndarray, angular_sep: np.ndarray, X_grizy_err: np.ndarray = None, n_resamples: int = 10):
@@ -272,7 +274,7 @@ class Splash_Pipeline:
             The supernova classes for the given host photometry.
         """
         # Get the host props
-        host_props_norm = self.predict_host_properties(X_grizy, X_grizy_err, n_resamples, return_normalized=True)
+        host_props_norm, host_props_err_norm = self.predict_host_properties(X_grizy, X_grizy_err, n_resamples, return_normalized=True)
         host_props = np.hstack((np.log10(angular_sep.reshape(-1, 1)), self.host_props))  # in order: (log10(angular separation), mass, SFR, redshift)
 
         # Get the classes
