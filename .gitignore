@@ -13,3 +13,4 @@ dist/
 *.egg-info
 *.pkl
 !SPLASH/trained_models/*
+SPLASH/_version.py

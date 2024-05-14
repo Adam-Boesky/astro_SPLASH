@@ -55,7 +55,7 @@ class Splash_Pipeline:
 
         # Import imputer, domain transfer MLP, host prop NN, and classifier
         # 0. KNN imputers
-        with open('/Users/adamboesky/Research/ay98/Weird_Galaxies/SPLASH/trained_models/knn_imputers.pkl', 'rb') as f:
+        with open(os.path.join(MODELS_DIR_PATH, 'trained_models/knn_imputers.pkl'), 'rb') as f:
             (photo_imputer, photoerr_imputer) = pickle.load(f)
             self.photo_imputer: KNNImputer = photo_imputer
             self.photoerr_imputer: KNNImputer = photoerr_imputer
@@ -145,7 +145,7 @@ class Splash_Pipeline:
         return X, X_err
 
 
-    def _inverse_tranform_properties(self, X: np.ndarray) -> np.ndarray:
+    def _inverse_tranform_properties(self, X: np.ndarray, X_err: np.ndarray = None) -> np.ndarray:
         """Un-normalize the properties M_*, SFR, and redshift using the train mean and variances.
 
         Args:
@@ -153,7 +153,9 @@ class Splash_Pipeline:
         Returns:
             The un-normalized properties of the galaxies.
         """
-        return X * self.std_props + self.mu_props
+        X = X * self.std_props + self.mu_props
+        X_err = X_err * self.std_props
+        return X, X_err
     
 
     def _tranform_properties(self, X: np.ndarray) -> np.ndarray:
@@ -229,12 +231,14 @@ class Splash_Pipeline:
             # Property predictions are the median of the resampled results
             all_predictions_stacked = np.stack(all_predictions)
             host_props_norm = np.median(all_predictions_stacked, axis=0)
+            host_props_err_norm = np.std(all_predictions_stacked, axis=0)
         else:
             if domain_transfer:
                 X_grizy = self._transfer_domain(torch.from_numpy(X_grizy))
 
             # Predict host properties
             host_props_norm = self.property_predicting_net(torch.from_numpy(X_grizy)).detach().numpy()
+            host_props_err_norm = None
         self.host_props = self._inverse_tranform_properties(host_props_norm)
 
         if return_normalized:
