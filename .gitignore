@@ -12,5 +12,6 @@ ps1_dir/*
 dist/
 *.egg-info
 *.pkl
-!SPLASH/trained_models/*
+!SPLASH/trained_models/*.pkl
+!SPLASH/trained_models/*.pbz2
 SPLASH/_version.py

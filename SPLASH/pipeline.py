@@ -3,6 +3,8 @@ import bz2
 import torch
 import pickle
 import numpy as np
+import sklearn
+import pkg_resources
 
 from typing import Tuple
 from sklearn.impute import KNNImputer, MissingIndicator
@@ -68,7 +70,11 @@ class Splash_Pipeline:
         resume(self.property_predicting_net, host_prop_hyperparams['weights_fname'])
         self.property_predicting_net.eval()
         # 3. Classifier
-        with bz2.BZ2File(os.path.join(MODELS_DIR_PATH, 'trained_models/rf_classifier.pbz2'), 'rb') as f:
+        if pkg_resources.parse_version(sklearn.__version__) >= pkg_resources.parse_version('1.3.0'):
+            self.rf_fname = 'rf_classifier_new_version.pbz2'
+        else:
+            self.rf_fname = 'rf_classifier_old_version.pbz2'
+        with bz2.BZ2File(os.path.join(MODELS_DIR_PATH, f'trained_models/{self.rf_fname}'), 'rb') as f:
             self.random_forest = pickle.load(f)
 
         # Pipeline configuration
