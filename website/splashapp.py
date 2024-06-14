@@ -6,7 +6,7 @@ from astropy.coordinates import SkyCoord
 from SPLASH.pipeline import Splash_Pipeline
 import os
 import shutil
-from astro_ghost.PS1QueryFunctions import getAllPostageStamps
+from astro_ghost.PS1QueryFunctions import geturl
 from astro_ghost.TNSQueryFunctions import getTNSSpectra
 from astro_ghost.NEDQueryFunctions import getNEDSpectra
 from astro_ghost.ghostHelperFunctions import getTransientHosts, getGHOST
@@ -99,17 +99,30 @@ def run_ghost(sn_db):
     hosts = getTransientHosts(transientName=snName, transientCoord=snCoord, verbose='True', starcut='gentle', ascentMatch=False)
     return hosts
 
+def get_host_pics(ra, dec):
+    if dec > -30:
+        ps1_pic = geturl(ra, dec, color=True)
+    else:
+        ps1_pic = ""
+    print(ps1_pic)
+    return ps1_pic
+
 def run_splash(grizy, grizy_err, angular_seps):
     # Load pipeline object
     pipeline = Splash_Pipeline(pipeline_version='weighted_full_band',   # the default version of the pipeline
                                pre_transformed=False,                   # whether the given data is pre-logged and nnormalized
                                within_4sigma=True)                      # whether we only want to classify objects with properties within 4-sigma of the training set
     # Predict the classes. n_resamples is the number of boostraps for getting the median predicted host properties.
-    try:
-        classes = pipeline.predict_classes(grizy, angular_seps, grizy_err, n_resamples=50)
-    except:
-        classes = [-1]
-    return classes
+    # in order: (mass, SFR, redshift)
+    norm_values, norm_val_errs = pipeline.predict_host_properties(grizy, grizy_err, 10, return_normalized=True)
+    values, val_errs = pipeline._inverse_tranform_properties(norm_values[0], norm_val_errs[0])
+    mass, sfr, redshift = values
+    mass_err, sfr_err, redshift_err = val_errs
+    probs = pipeline.predict_probs(grizy, angular_seps, grizy_err, n_resamples=50)
+    # I only care about Ia probability...
+    Ia_prob = probs[0][0]
+    classes = pipeline.predict_classes(grizy, angular_seps, grizy_err, n_resamples=50)
+    return classes, Ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err
 
 # Main function to create the HTML file
 def create_html():
@@ -121,15 +134,20 @@ def create_html():
 
     class_dict = {0: 'Ia', 1: 'Ib/c', 2: 'SLSN', 3: 'IIn', 4: 'IIP/L', -1: 'N/A'}
     all_classes = np.zeros(len(grizy), dtype="<U10")
+    ps1_pics = []
+    results = []
+
     for i in np.arange(len(grizy)):
         # RESORT
         correct_j = np.where(hosts['TransientName'] == sn_db['oid'].values[i])[0][0]
         print('running on...', i, sn_db['oid'].values[i])
-        classes = run_splash(grizy[correct_j:correct_j+1], grizy_err[correct_j:correct_j+1], angular_seps[correct_j:correct_j+1])
+        classes, Ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err = run_splash(grizy[correct_j:correct_j+1], grizy_err[correct_j:correct_j+1], angular_seps[correct_j:correct_j+1])
         all_classes[i] = class_dict[classes[0]]
-
-    sn_names = list(sn_db['oid'].values)
-    supernovae = list(zip(sn_names, all_classes))
+        ra = sn_db.loc[i, 'meanra']
+        dec = sn_db.loc[i, 'meandec']
+        ps1_pic = geturl(ra, dec, color=True) if dec > -30 else ""
+        ps1_pics.append(ps1_pic)
+        results.append((sn_db['oid'].values[i], all_classes[i], Ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err, ps1_pic))
 
     # Define the HTML template
     html_template = '''
@@ -143,6 +161,11 @@ def create_html():
                 <tr>
                     <th>Supernova Name</th>
                     <th>Class</th>
+                    <th>Ia Prob</th>
+                    <th>Mass</th>
+                    <th>SFR</th>
+                    <th>Redshift</th>
+                    <th>Galaxy Image</th>
                 </tr>
                 {rows}
             </table>
@@ -152,8 +175,11 @@ def create_html():
 
     # Create the table rows
     rows = ''
-    for sn_name, class_output in supernovae:
-        rows += f'<tr><td><a href="https://alerce.online/object/{sn_name}">{sn_name}</a></td><td>{class_output}</td></tr>'
+    for result in results:
+        sn_name, class_output, ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err, ps1_pic = result
+        img_html = f'<img src="{ps1_pic}" width="100" height="100">' if ps1_pic else "N/A"
+        rows += f'<tr><td><a href="https://alerce.online/object/{sn_name}">{sn_name}</a></td><td>{class_output}</td><td>{ia_prob}</td>'
+        rows += f'<td>{mass:.2f} ± {mass_err:.2f}</td><td>{sfr:.2f} ± {sfr_err:.2f}</td><td>{redshift:.2f} ± {redshift_err:.2f}</td><td>{img_html}</td></tr>'
 
     # Render the HTML content
     html_content = html_template.format(rows=rows)
@@ -161,6 +187,8 @@ def create_html():
     # Write the HTML content to a file
     with open('splash.html', 'w') as f:
         f.write(html_content)
+
+
 
 if __name__ == '__main__':
     create_html()
