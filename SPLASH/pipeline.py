@@ -290,3 +290,39 @@ class Splash_Pipeline:
             classes[~within_training_mask] = -1
 
         return classes
+
+    def predict_probs(self, X_grizy: np.ndarray, angular_sep: np.ndarray, X_grizy_err: np.ndarray = None, n_resamples: int = 10):
+        """Predict the class of a supernova given its host photometry. Based on the dimensions of the given
+        photometry, this function will either conduct domain transfer or not. Returns -1 if hosts are outside
+        of the train galaxy properties 4 sigma and within_4sigma is True.
+
+        We use the following class labels:
+            0=Ia
+            1=Ib/c
+            2=SLSN
+            3=IIn
+            4=II (P/L)
+            -1=Outside train properties 4 sigma
+
+        Args:
+            X_grizy (np.ndarray): Either the grizy (n, 5) or full band photometry for the given galaxies (n, 18).
+            angular_sep (np.ndarray): The angular separations of the SNe from the given galaxies in 
+                arcseconds (n, 1).
+            X_grizy_err (np.ndarray): Option for the errors on X_grizy. If given, we will resample and take 
+                the median for the properties.
+            n_resamples (int): The number of samples we should produce if we are going to resample from the
+                photemetry with its given error.
+        Returns:
+            The supernova classes for the given host photometry.
+        """
+        # Get the host props
+        host_props_norm, host_props_err_norm = self.predict_host_properties(X_grizy, X_grizy_err, n_resamples, return_normalized=True)
+        host_props = np.hstack((np.log10(angular_sep.reshape(-1, 1)), self.host_props))  # in order: (log10(angular separation), mass, SFR, redshift)
+
+        # Get the classes
+        all_probs = self.random_forest.predict_proba(host_props)
+        if self.within_4sigma:
+            within_training_mask = np.all((host_props_norm < 4) & (host_props_norm > -4), axis=1)
+            all_probs[~within_training_mask] = np.nan
+
+        return all_probs
