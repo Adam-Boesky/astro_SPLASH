@@ -286,7 +286,7 @@ class Splash_Pipeline:
         # Get the classes
         classes = self.random_forest.predict(host_props)
         if self.within_4sigma:
-            within_training_mask = np.all((host_props_norm < 4) & (host_props_norm > -4), axis=1)
+            within_training_mask = np.all((host_props_norm < 4) & (host_props_norm > -4), axis=1)  # hosts within 4 sigma of training data
             classes[~within_training_mask] = -1
 
         return classes
