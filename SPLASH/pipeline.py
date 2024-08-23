@@ -6,7 +6,8 @@ import numpy as np
 import sklearn
 import pkg_resources
 
-from typing import Tuple
+from typing import Union, Tuple, Dict
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import KNNImputer, MissingIndicator
 from .network_utils import resume, get_model
 
@@ -74,10 +75,10 @@ class Splash_Pipeline:
             self.rf_fname = 'rf_classifier_new_version.pbz2'
         else:
             self.rf_fname = 'rf_classifier_old_version.pbz2'
-        with bz2.BZ2File(os.path.join(MODELS_DIR_PATH, f'trained_models/{self.rf_fname}'), 'rb') as f:
-            self.random_forest = pickle.load(f)
+        self.random_forest = self._load_rf(self.rf_fname)
 
         # Pipeline configuration
+        self.class_labels = ['Ia', 'Ib/c', 'SLSN', 'IIn', 'II (P/L)']                               # labels of classes that SPLASH classifies
         self.nan_thresh_ratio = nan_thresh_ratio                                                    # the maximum proprotion of nan photometric measurements we will impute
         self.nan_indicators = None                                                                  # a matrix of indicators for nans before imputation
         self.pre_transformed = pre_transformed                                                      # whether data is pre-transformed by user or not
@@ -94,8 +95,24 @@ class Splash_Pipeline:
                             0.88136263, 1.62222597, 2.06392269, 0.43210206, 1.36265575,
                             0.50050502, 0.43821229, 0.46058673, 2.21595863, 2.13270738,
                             2.02278681, 0.67246779, 0.70040306])
+        self._ovr_classifiers = None                                                                # one vs. rest RF classifiers
         np.random.seed(random_seed)                                                                 # why 22? my lucky number
 
+    @property
+    def ovr_classifiers(self) -> Dict[str, RandomForestClassifier]:
+        """The one-versus-rest random forest classifiers."""
+        if not self._ovr_classifiers:
+            self._ovr_classifiers = {}
+            for lab in self.class_labels:
+                fname_lab = f"{lab.lower().replace(' ', '_').replace('/', '&').replace('i', 'I')}_rf.pbz2"
+                self._ovr_classifiers[lab] = self._load_rf(f'ovr_rfs/{fname_lab}')
+
+        return self._ovr_classifiers
+
+    def _load_rf(self, rf_fname: str) -> RandomForestClassifier:
+        """Load random forest classifier."""
+        with bz2.BZ2File(os.path.join(MODELS_DIR_PATH, f'trained_models/{rf_fname}'), 'rb') as f:
+            return pickle.load(f)
 
     def _check_nans(self, arr: np.ndarray):
         """Raise an error if the given arr has a ratio of nans greater than self.nan_thresh_ratio.
@@ -110,7 +127,6 @@ class Splash_Pipeline:
             raise ValueError(f'The ratio of NaNs to total values exceeds the acceptable ratio of {self.nan_thresh_ratio} for some \
                              photometry. Please handle these values before passing into the pipeline.')
 
-
     def _transfer_domain(self, X_grizy: np.ndarray) -> np.ndarray:
         """Helper function for conduction domain transfer.
 
@@ -122,7 +138,6 @@ class Splash_Pipeline:
         other_bands = self.domain_transfer_net(X_grizy).detach().numpy()
         X_full_band = np.hstack((X_grizy, other_bands))
         return X_full_band
-
 
     def _transform_photometry(self, X: np.ndarray, X_err: np.ndarray = None, just_grizy: bool = True) -> Tuple[np.ndarray, np.ndarray]:
         """Log transform and normalize the photometry and photometry error using the mean and variance of the
@@ -151,7 +166,6 @@ class Splash_Pipeline:
 
         return X, X_err
 
-
     def _inverse_tranform_properties(self, X: np.ndarray, X_err: np.ndarray = None) -> np.ndarray:
         """Un-normalize the properties M_*, SFR, and redshift using the train mean and variances.
 
@@ -163,7 +177,6 @@ class Splash_Pipeline:
         X = X * self.std_props + self.mu_props
         X_err = X_err * self.std_props
         return X, X_err
-    
 
     def _tranform_properties(self, X: np.ndarray) -> np.ndarray:
         """Normalize the properties M_*, SFR, and redshift using the train mean and variances.
@@ -175,7 +188,6 @@ class Splash_Pipeline:
         """
         return (X - self.mu_props) / self.std_props
 
-
     def _impute_photometry(self, photo: np.ndarray, photoerr: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Impute the photometry.
 
@@ -185,7 +197,6 @@ class Splash_Pipeline:
         """
         self.nan_indicator_matrix = MissingIndicator(missing_values=np.NaN, features="all").fit_transform(photo)
         return self.photo_imputer.transform(photo), self.photoerr_imputer.transform(photoerr)
-
 
     def predict_host_properties(self, X_grizy: np.ndarray, X_grizy_err: np.ndarray = None, n_resamples: int = 10, return_normalized: bool = False) -> np.ndarray:
         """Predict the mass, SFR, and redshift of host galaxies from their photometry. Based on the dimensions of 
@@ -254,7 +265,6 @@ class Splash_Pipeline:
         else:
             return self.host_props, self.host_props_err
 
-
     def predict_classes(self, X_grizy: np.ndarray, angular_sep: np.ndarray, X_grizy_err: np.ndarray = None, n_resamples: int = 10):
         """Predict the class of a supernova given its host photometry. Based on the dimensions of the given
         photometry, this function will either conduct domain transfer or not. Returns -1 if hosts are outside
@@ -291,7 +301,7 @@ class Splash_Pipeline:
 
         return classes
 
-    def predict_probs(self, X_grizy: np.ndarray, angular_sep: np.ndarray, X_grizy_err: np.ndarray = None, n_resamples: int = 10):
+    def predict_probs(self, X_grizy: np.ndarray, angular_sep: np.ndarray, X_grizy_err: np.ndarray = None, n_resamples: int = 10, ovr: bool = False) -> Union[np.ndarray, dict]:
         """Predict the class of a supernova given its host photometry. Based on the dimensions of the given
         photometry, this function will either conduct domain transfer or not. Returns -1 if hosts are outside
         of the train galaxy properties 4 sigma and within_4sigma is True.
@@ -312,17 +322,24 @@ class Splash_Pipeline:
                 the median for the properties.
             n_resamples (int): The number of samples we should produce if we are going to resample from the
                 photemetry with its given error.
+            ovr (bool): If true, return the one-versus-rest probability for each class in the form of a 
+                dictionary.     e.g. {'Ia': 0.9, 'Ib/c': 0.2, ...}
         Returns:
             The supernova classes for the given host photometry.
         """
         # Get the host props
-        host_props_norm, host_props_err_norm = self.predict_host_properties(X_grizy, X_grizy_err, n_resamples, return_normalized=True)
+        host_props_norm, _ = self.predict_host_properties(X_grizy, X_grizy_err, n_resamples, return_normalized=True)
         host_props = np.hstack((np.log10(angular_sep.reshape(-1, 1)), self.host_props))  # in order: (log10(angular separation), mass, SFR, redshift)
 
-        # Get the classes
-        all_probs = self.random_forest.predict_proba(host_props)
-        if self.within_4sigma:
-            within_training_mask = np.all((host_props_norm < 4) & (host_props_norm > -4), axis=1)
-            all_probs[~within_training_mask] = np.nan
+        # Get the class probabilities
+        if not ovr:
+            all_probs = self.random_forest.predict_proba(host_props)
+            if self.within_4sigma:
+                within_training_mask = np.all((host_props_norm < 4) & (host_props_norm > -4), axis=1)
+                all_probs[~within_training_mask] = np.nan
+        else:
+            all_probs = {}
+            for class_lab, class_rf in self.ovr_classifiers.items():
+                all_probs[class_lab] = class_rf.predict_proba(host_props)[:, np.where(class_rf.classes_ == 1)[0][0]]
 
         return all_probs
