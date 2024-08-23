@@ -10,6 +10,7 @@ from typing import Union, Tuple, Dict
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import KNNImputer, MissingIndicator
 from .network_utils import resume, get_model
+from .rf_registry import get_goodboy
 
 torch.set_default_dtype(torch.float64)  # set the pytorch default to a float64
 MODELS_DIR_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -55,6 +56,9 @@ class Splash_Pipeline:
                                            'weights_fname':  os.path.join(MODELS_DIR_PATH, 'trained_models/V2_best_sed_model.pkl')}
             host_prop_hyperparams = {'num_inputs': 14, 'num_outputs': 3, 'nodes_per_layer': [12, 10, 8, 6, 4], 'num_linear_output_layers': 3,
                                      'weights_fname':  os.path.join(MODELS_DIR_PATH, 'trained_models/V2_host_prop_best_model.pkl')}
+
+        # Get the pooch object for loading RFs
+        self.pooch = get_goodboy()
 
         # Import imputer, domain transfer MLP, host prop NN, and classifier
         # 0. KNN imputers
@@ -111,7 +115,8 @@ class Splash_Pipeline:
 
     def _load_rf(self, rf_fname: str) -> RandomForestClassifier:
         """Load random forest classifier."""
-        with bz2.BZ2File(os.path.join(MODELS_DIR_PATH, f'trained_models/{rf_fname}'), 'rb') as f:
+        cached_fname = self.pooch.fetch(f'trained_models/{rf_fname}')
+        with bz2.BZ2File(os.path.join(cached_fname), 'rb') as f:
             return pickle.load(f)
 
     def _check_nans(self, arr: np.ndarray):
