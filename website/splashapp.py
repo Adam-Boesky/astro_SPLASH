@@ -2,7 +2,7 @@ import pickle
 import pandas as pd
 import numpy as np
 from astropy.io import ascii
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, Angle
 from SPLASH.pipeline import Splash_Pipeline
 import os
 import shutil
@@ -11,11 +11,14 @@ from astro_ghost.TNSQueryFunctions import getTNSSpectra
 from astro_ghost.NEDQueryFunctions import getNEDSpectra
 from astro_ghost.ghostHelperFunctions import getTransientHosts, getGHOST
 from astropy import units as u
-from datetime import datetime
+from datetime import datetime, timedelta
 from astropy.time import Time
-from alerce.core import Alerce
+import requests
+from bs4 import BeautifulSoup
 
-# get rid of stupid folders...HACK
+
+
+# get rid of folders...hacky
 def clean_stuff():
     # The substring you are looking for in the directory names
     substring = "transients"
@@ -65,6 +68,7 @@ def get_features(transients):
     return grizy, grizy_err, angular_seps
 
 def run_alerce():
+    from alerce.core import Alerce
     client = Alerce()
     now = datetime.now()
     formatted_date = now.strftime('%Y-%m-%dT00:00:00')
@@ -78,6 +82,45 @@ def run_alerce():
                                probability = 0.8,
                                page_size=5)
     return SNe
+
+def run_TNS():
+    # This is a hacky function. Currently, the TNS API doesn't support
+    # what we need..so this scrapes the website instead
+    three_days_ago = datetime.today() - timedelta(days=3)
+    three_days_ago_date = three_days_ago.strftime('%Y-%m-%d')
+
+
+    url = 'https://www.wis-tns.org/search?&reporting_groupid%5B%5D=74&at_type%5B%5D=1&date_start%5Bdate%5D=' + three_days_ago_date
+
+    #hack
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36",
+    }
+
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    content = response.text
+
+    soup = BeautifulSoup(content, 'html.parser')
+    rows = soup.find_all('tr', class_='row-even public odd')
+    db_rows = []
+    for row in rows:
+        if 'cell-name' not in str(row):
+            continue
+        name = row.find('td', class_='cell-name').get_text(strip=True).replace(" ", "")
+        internal_name = row.find('td', class_='cell-internal_name').get_text(strip=True).replace(" ", "")
+
+        ra = row.find('td', class_='cell-ra').get_text(strip=True)
+        ra_deg = Angle(ra, unit=u.hourangle).degree
+
+        decl = row.find('td', class_='cell-decl').get_text(strip=True)
+        dec_deg = Angle(decl, unit=u.deg).degree
+
+        db_rows.append((name, internal_name, ra_deg, dec_deg))
+
+    SNe = pd.DataFrame(db_rows, columns=['oid', 'internal-name', 'meanra', 'meandec'])
+    return SNe
+
 
 def run_ghost(sn_db):
     # we want to include print statements so we know what the algorithm is doing
@@ -127,7 +170,8 @@ def run_splash(grizy, grizy_err, angular_seps):
 # Main function to create the HTML file
 def create_html():
     clean_stuff()
-    sn_db = run_alerce()
+    sn_db = run_TNS()
+    # sn_db = run_alerce() # Removed following suggestion from Alerce
     hosts = run_ghost(sn_db)
 
     grizy, grizy_err, angular_seps = get_features(hosts)
@@ -138,7 +182,8 @@ def create_html():
     results = []
 
     for i in np.arange(len(grizy)):
-        # RESORT
+        # RE-SORT
+        print(hosts['TransientName'], sn_db['oid'])
         correct_j = np.where(hosts['TransientName'] == sn_db['oid'].values[i])[0][0]
         print('running on...', i, sn_db['oid'].values[i])
         classes, Ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err = run_splash(grizy[correct_j:correct_j+1], grizy_err[correct_j:correct_j+1], angular_seps[correct_j:correct_j+1])
@@ -147,7 +192,7 @@ def create_html():
         dec = sn_db.loc[i, 'meandec']
         ps1_pic = geturl(ra, dec, color=True) if dec > -30 else ""
         ps1_pics.append(ps1_pic)
-        results.append((sn_db['oid'].values[i], all_classes[i], Ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err, ps1_pic))
+        results.append((sn_db['oid'].values[i], sn_db['internal-name'].values[i], all_classes[i], Ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err, ps1_pic))
 
     # Define the HTML template
     html_template = '''
@@ -176,9 +221,9 @@ def create_html():
     # Create the table rows
     rows = ''
     for result in results:
-        sn_name, class_output, ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err, ps1_pic = result
+        sn_name, internal_name, class_output, ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err, ps1_pic = result
         img_html = f'<img src="{ps1_pic}" width="100" height="100">' if ps1_pic else "N/A"
-        rows += f'<tr><td><a href="https://alerce.online/object/{sn_name}">{sn_name}</a></td><td>{class_output}</td><td>{ia_prob}</td>'
+        rows += f'<tr><td><a href="https://alerce.online/object/{internal_name}">{sn_name}</a></td><td>{class_output}</td><td>{ia_prob}</td>'
         rows += f'<td>{mass:.2f} ± {mass_err:.2f}</td><td>{sfr:.2f} ± {sfr_err:.2f}</td><td>{redshift:.2f} ± {redshift_err:.2f}</td><td>{img_html}</td></tr>'
 
     # Render the HTML content
