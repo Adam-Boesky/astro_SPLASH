@@ -1,1 +1,2 @@
-recursive-include SPLASH/trained_models *
+recursive-exclude SPLASH/trained_models *.pbz2
+recursive-include SPLASH/trained_models *.pkl

@@ -15,7 +15,8 @@ setup(
     ],
     install_requires=['torch',
                       'numpy',
-                      'scikit-learn'],
+                      'scikit-learn',
+                      'pooch'],
     include_package_data=True
 )
 
