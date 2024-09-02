@@ -14,3 +14,5 @@ dist/
 *.pkl
 !SPLASH/trained_models/*.pkl
 !SPLASH/trained_models/*.pbz2
+*splash.html
+*transients_*/

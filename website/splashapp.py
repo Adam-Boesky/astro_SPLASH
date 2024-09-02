@@ -1,21 +1,18 @@
-import pickle
-import pandas as pd
-import numpy as np
-from astropy.io import ascii
-from astropy.coordinates import SkyCoord, Angle
-from SPLASH.pipeline import Splash_Pipeline
 import os
 import shutil
-from astro_ghost.PS1QueryFunctions import geturl
-from astro_ghost.TNSQueryFunctions import getTNSSpectra
-from astro_ghost.NEDQueryFunctions import getNEDSpectra
-from astro_ghost.ghostHelperFunctions import getTransientHosts, getGHOST
-from astropy import units as u
 from datetime import datetime, timedelta
-from astropy.time import Time
+
+import numpy as np
+import pandas as pd
 import requests
+from astro_ghost.ghostHelperFunctions import getGHOST, getTransientHosts
+from astro_ghost.PS1QueryFunctions import geturl
+from astropy import units as u
+from astropy.coordinates import Angle, SkyCoord
+from astropy.time import Time
 from bs4 import BeautifulSoup
 
+from SPLASH.pipeline import Splash_Pipeline
 
 
 # get rid of folders...hacky
@@ -198,15 +195,68 @@ def create_html():
     html_template = '''
     <html>
         <head>
-            <title>SPLASH Classification Results for today...</title>
+            <title>SPLASH Classification Results for Today</title>
+            <style>
+                body {{
+                    background-color: #0d0d0d;
+                    color: #e6e6e6;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                }}
+                h1 {{
+                    text-align: center;
+                    color: #3388ff;
+                    font-size: 2.5em;
+                    margin-bottom: 30px;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 20px;
+                    box-shadow: 0 0 10px rgba(0, 204, 255, 0.5);
+                }}
+                th, td {{
+                    padding: 12px;
+                    text-align: center;
+                }}
+                th {{
+                    background-color: #1a1a1a;
+                    color: #3388ff;
+                    font-size: 1.2em;
+                    text-transform: uppercase;
+                }}
+                td {{
+                    background-color: #262626;
+                    border-bottom: 1px solid #333;
+                }}
+                tr:hover {{
+                    background-color: #333;
+                    transition: background-color 0.3s;
+                }}
+                a {{
+                    color: #3388ff;
+                    text-decoration: none;
+                }}
+                a:hover {{
+                    text-decoration: underline;
+                }}
+                img {{
+                    border-radius: 10px;
+                    transition: transform 0.3s;
+                }}
+                img:hover {{
+                    transform: scale(1.1);
+                }}
+            </style>
         </head>
         <body>
             <h1>Supernova Classification Results</h1>
-            <table border="1">
+            <table>
                 <tr>
                     <th>Supernova Name</th>
-                    <th>Class</th>
-                    <th>Ia Prob</th>
+                    <th>SPLASH Class Prediction</th>
+                    <th>Ia Probability</th>
                     <th>Mass</th>
                     <th>SFR</th>
                     <th>Redshift</th>
@@ -232,7 +282,6 @@ def create_html():
     # Write the HTML content to a file
     with open('splash.html', 'w') as f:
         f.write(html_content)
-
 
 
 if __name__ == '__main__':
