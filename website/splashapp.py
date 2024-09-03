@@ -12,6 +12,7 @@ from astropy.coordinates import Angle, SkyCoord
 from astropy.time import Time
 from bs4 import BeautifulSoup
 
+import SPLASH
 from SPLASH.pipeline import Splash_Pipeline
 
 
@@ -191,11 +192,16 @@ def create_html():
         ps1_pics.append(ps1_pic)
         results.append((sn_db['oid'].values[i], sn_db['internal-name'].values[i], all_classes[i], Ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err, ps1_pic))
 
+    # Get current date and SPLASH version
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    splash_version = SPLASH.__version__  # Replace this with the actual SPLASH version number if dynamic retrieval is possible
+    github_link = 'https://github.com/Adam-Boesky/astro_SPLASH'
+
     # Define the HTML template
     html_template = '''
     <html>
         <head>
-            <title>SPLASH Classification Results for Today</title>
+            <title>SPLASH Classification Results for {date}</title>
             <style>
                 body {{
                     background-color: #0d0d0d;
@@ -260,10 +266,14 @@ def create_html():
                     <th>Mass</th>
                     <th>SFR</th>
                     <th>Redshift</th>
-                    <th>Galaxy Image</th>
+                    <th>Host Galaxy Image</th>
                 </tr>
                 {rows}
             </table>
+            <footer>
+                <p>SPLASH Version: {version}</p>
+                <p><a href="{github}">SPLASH GitHub</a></p>
+            </footer>
         </body>
     </html>
     '''
@@ -277,7 +287,7 @@ def create_html():
         rows += f'<td>{mass:.2f} ± {mass_err:.2f}</td><td>{sfr:.2f} ± {sfr_err:.2f}</td><td>{redshift:.2f} ± {redshift_err:.2f}</td><td>{img_html}</td></tr>'
 
     # Render the HTML content
-    html_content = html_template.format(rows=rows)
+    html_content = html_template.format(rows=rows, date=current_date, version=splash_version, github=github_link)
 
     # Write the HTML content to a file
     with open('splash.html', 'w') as f:
