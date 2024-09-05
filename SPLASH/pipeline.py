@@ -6,7 +6,7 @@ import numpy as np
 import sklearn
 import pkg_resources
 
-from typing import Union, Tuple, Dict
+from typing import Union, Tuple, Dict, Optional
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import KNNImputer, MissingIndicator
 from .network_utils import resume, get_model
@@ -153,7 +153,7 @@ class Splash_Pipeline:
             X_err (np.ndarray): Data errors to transform.
             just_grizy (bool): Whether the data is just grizy or all 18 bands.
         Returns:
-            Log transformed and normalized X.
+            Log transformed and normalized X and X_err.
         
         NOTE: Bands are assumed to be in the order: ['G', 'R', 'I', 'Z', 'Y', 'J', 'H',
                                                      'Ks', 'CH1', 'CH2', 'MIPS24','MIPS70',
@@ -168,6 +168,36 @@ class Splash_Pipeline:
             X_err = X_err / self.std_phot[: n_bands]
         X = np.log10(X)
         X = (X - self.mu_phot[: n_bands]) / self.std_phot[: n_bands]
+
+        return X, X_err
+
+    def _inverse_transform_photometry(self, X: np.ndarray, X_err: np.ndarray = None, just_grizy: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+        """Inverse of above transformation.
+
+        Args:
+            X (np.ndarray): Data to transform.
+            X_err (np.ndarray): Data errors to transform.
+            just_grizy (bool): Whether the data is just grizy or all 18 bands.
+        Returns:
+            Inverse transformed X and X_err.
+        
+        NOTE: Bands are assumed to be in the order: ['G', 'R', 'I', 'Z', 'Y', 'J', 'H',
+                                                     'Ks', 'CH1', 'CH2', 'MIPS24','MIPS70',
+                                                     'PACS100', 'MIPS160', 'PACS160',
+                                                     'SPIRE250', 'SPIRE350', 'SPIRE500']
+        """
+        n_bands = 5 if just_grizy else 18
+
+        # Inverse normalize
+        X = X * self.std_phot[:n_bands] + self.mu_phot[:n_bands]
+
+        # Inverse log transform
+        X = 10 ** X
+
+        # Inverse the transformation for errors if provided
+        if X_err is not None:
+            X_err = X_err * self.std_phot[:n_bands]
+            X_err = np.abs(X_err[:, :n_bands] * (X[:, :n_bands] * np.log(10)))
 
         return X, X_err
 
@@ -203,7 +233,53 @@ class Splash_Pipeline:
         self.nan_indicator_matrix = MissingIndicator(missing_values=np.NaN, features="all").fit_transform(photo)
         return self.photo_imputer.transform(photo), self.photoerr_imputer.transform(photoerr)
 
-    def predict_host_properties(self, X_grizy: np.ndarray, X_grizy_err: np.ndarray = None, n_resamples: int = 10, return_normalized: bool = False) -> np.ndarray:
+    def infer_sed(self, X_grizy: np.ndarray, X_grizy_err: Optional[np.ndarray] = None, n_resamples: int = 10, return_normalized: bool = False) -> Tuple[np.ndarray, np.ndarray]:
+        """Predict the full 18-wavelength SED given the grizy data.
+
+        Bands are ['G', 'R', 'I', 'Z', 'Y', 'J', 'H', 'Ks', 'CH1', 'CH2', 'MIPS24','MIPS70', 'PACS100', 'MIPS160',
+                    'PACS160','SPIRE250', 'SPIRE350', 'SPIRE500']
+
+        Args:
+            X_grizy (np.ndarray): Either the grizy (n, 5) or full band photometry for the given galaxies (n, 18) in mJy.
+            X_grizy_err (np.ndarray): Option for the errors on X_grizy. If given, we will resample and take 
+                the median for the properties.
+            n_resamples (int): The number of samples we should produce if we are going to resample from the
+                photemetry with its given error.
+        Returns:
+            1. The 18 band photometry.
+            2. The errors on the 18 bands.
+        """
+        # Check nans and grizy dimensions
+        self._check_nans(X_grizy)
+        if X_grizy.shape[1] != 5:
+            raise ValueError(f'Input grizy dimensions are {X_grizy.shape} when they should be either (n, 5).')
+
+        # Preprocess the data
+        if self.version != 'best_band':  # imputation not implemented for best_band version
+            X_grizy, X_grizy_err = self._impute_photometry(X_grizy, X_grizy_err)
+        if not self.pre_transformed:
+            X_grizy, X_grizy_err = self._transform_photometry(X_grizy, X_grizy_err, just_grizy=True)
+
+        all_seds = []
+        if X_grizy_err is not None:
+            # Check grizy error dimensions
+            if X_grizy_err.shape[1] not in [5, 18]:
+                raise ValueError(f'Input grizy error dimensions are {X_grizy_err.shape} when they should be either (n, 5) or (n, 18).')
+
+            for _ in range(n_resamples):
+                # Resample X_grizy from a normal distribution with mu=X_grizy and sigma=X_grizy_err
+                X_resampled = np.random.normal(X_grizy, X_grizy_err, )
+                X_resampled = self._transfer_domain(torch.from_numpy(X_resampled))
+                all_seds.append(X_resampled)
+            all_seds = np.stack(all_seds)
+            all_seds_err = np.std(all_seds, axis=0)
+            all_seds = np.median(all_seds, axis=0)
+
+        if not return_normalized:
+            return self._inverse_transform_photometry(all_seds, all_seds_err, just_grizy=False)
+        return all_seds, all_seds_err
+
+    def predict_host_properties(self, X_grizy: np.ndarray, X_grizy_err: Optional[np.ndarray] = None, n_resamples: int = 10, return_normalized: bool = False) -> np.ndarray:
         """Predict the mass, SFR, and redshift of host galaxies from their photometry. Based on the dimensions of 
         the given photometry, this function will either conduct domain transfer or not.
         NOTE: 
