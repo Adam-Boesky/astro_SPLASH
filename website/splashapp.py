@@ -156,7 +156,7 @@ def run_splash(grizy, grizy_err, angular_seps):
     # Predict the classes. n_resamples is the number of boostraps for getting the median predicted host properties.
     # in order: (mass, SFR, redshift)
     norm_values, norm_val_errs = pipeline.predict_host_properties(grizy, grizy_err, 10, return_normalized=True)
-    values, val_errs = pipeline._inverse_tranform_properties(norm_values[0], norm_val_errs[0])
+    values, val_errs = pipeline._inverse_transform_properties(norm_values[0], norm_val_errs[0])
     mass, sfr, redshift = values
     mass_err, sfr_err, redshift_err = val_errs
     probs = pipeline.predict_probs(grizy, angular_seps, grizy_err, n_resamples=50)
@@ -283,7 +283,7 @@ def create_html():
     for result in results:
         sn_name, internal_name, class_output, ia_prob, mass, sfr, redshift, mass_err, sfr_err, redshift_err, ps1_pic = result
         img_html = f'<img src="{ps1_pic}" width="100" height="100">' if ps1_pic else "N/A"
-        rows += f'<tr><td><a href="https://alerce.online/object/{internal_name}">{sn_name}</a></td><td>{class_output}</td><td>{ia_prob}</td>'
+        rows += f'<tr><td><a href="https://alerce.online/object/{internal_name}">{sn_name}</a></td><td>{class_output}</td><td>{ia_prob:.3f}</td>'
         rows += f'<td>{mass:.2f} ± {mass_err:.2f}</td><td>{sfr:.2f} ± {sfr_err:.2f}</td><td>{redshift:.2f} ± {redshift_err:.2f}</td><td>{img_html}</td></tr>'
 
     # Render the HTML content
