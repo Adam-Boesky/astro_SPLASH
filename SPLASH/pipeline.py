@@ -117,8 +117,10 @@ class Splash_Pipeline:
         self.property_predicting_net.eval()
         # 3. Classifier
         if pkg_resources.parse_version(sklearn.__version__) >= pkg_resources.parse_version('1.3.0'):
+            self.sklearn_version = 'new_skl'
             self.rf_fname = 'rf_classifier_new_version.pbz2'
         else:
+            self.sklearn_version = 'old_skl'
             self.rf_fname = 'rf_classifier_old_version.pbz2'
         self.random_forest = self._load_rf(self.rf_fname)
 
@@ -129,7 +131,7 @@ class Splash_Pipeline:
             self._ovr_classifiers = {}
             for lab in self.class_labels:
                 fname_lab = f"{lab.lower().replace(' ', '_').replace('/', '&').replace('i', 'I')}_rf.pbz2"
-                self._ovr_classifiers[lab] = self._load_rf(f'ovr_rfs/{fname_lab}')
+                self._ovr_classifiers[lab] = self._load_rf(f'ovr_rfs/{self.sklearn_version}/{fname_lab}')
 
         return self._ovr_classifiers
 
