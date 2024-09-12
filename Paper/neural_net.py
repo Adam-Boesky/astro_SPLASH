@@ -11,7 +11,10 @@ from sklearn.impute import KNNImputer
 from sklearn.model_selection import train_test_split
 from torch import nn
 
-from logger import get_clean_logger
+try:
+    from .logger import get_clean_logger
+except ImportError:
+    from logger import get_clean_logger
 
 LOG = get_clean_logger(logger_name = Path(__file__).name)  # Get my beautiful logger
 VERBOSE = False                 # Whether logging should be verbose
