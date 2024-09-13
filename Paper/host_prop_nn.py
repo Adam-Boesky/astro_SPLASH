@@ -59,6 +59,8 @@ def load_and_preprocess():
         all_photo = pickle.load(f)
     photo = all_photo['data']
     photo_err = all_photo['data_err']
+    photo = photo[:, :5]
+    photo_err = photo_err[:, :5]
 
     # Take log of the fluxes to make the distributions better
     photo_err = np.abs(photo_err / (photo * np.log(10)))
@@ -156,20 +158,26 @@ def train_and_store_nn():
     # learning_rate = 0.01
     # weight_exp = 6.0
     # loss_fn = WeightedCustomLoss(exponent=weight_exp)
-    # SPECZ ONLY: [4096, [18, 13, 8, 4], 3, 0.01]
-    nodes_per_layer = [18, 13, 8, 4]
-    num_linear_output_layers = 3
-    learning_rate = 0.01
-    batch_size = 4096
+    # # SPECZ ONLY: [4096, [18, 13, 8, 4], 3, 0.01]
+    # nodes_per_layer = [18, 13, 8, 4]
+    # num_linear_output_layers = 3
+    # learning_rate = 0.01
+    # batch_size = 4096
     # SPECZ ONLY AND REDSHIFT LOSS:   [2048, [18, 15, 12, 9, 6, 4], 3, 0.01]
     # n_epochs = 1000
     # nodes_per_layer = [18, 15, 12, 9, 6, 4]
     # num_linear_output_layers = 3
     # learning_rate = 0.01
     # batch_size = 2048
+    # SPECZ ONLY, AND GRIZY: [512, [5, 5, 4], 3, 0.01]
+    nodes_per_layer = [5, 5, 4]
+    num_linear_output_layers = 3
+    learning_rate = 0.01
+    batch_size = 512
+
     loss_fn = CustomLossExpz()
     torch.set_default_dtype(torch.float64)
-    model = get_model(num_inputs=18, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
+    model = get_model(num_inputs=5, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
@@ -227,7 +235,7 @@ def train_and_store_nn():
                 checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs_nice_loss.pkl")
 
             # Early stopping
-            elif epoch - best_epoch >= 750:
+            elif epoch - best_epoch >= 1000:
                 LOG.info('Loss has not decreased in 50 epochs, early stopping. Best test loss is %.3f', best_loss)
                 break
 
