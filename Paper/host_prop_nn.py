@@ -51,6 +51,31 @@ class CustomLossExpz(nn.Module):
 
         return loss
 
+
+class WeightedCustomExpZLoss(nn.Module):
+    """A custom loss function. Basically the MSE but we divide by std"""
+    def __init__(self, exponent: float):
+        super(WeightedCustomExpZLoss, self).__init__()
+        self.exponent = exponent
+
+    def forward(self, preds: torch.Tensor, targets: torch.Tensor, target_err: torch.Tensor, target_z: torch.Tensor) -> torch.Tensor:
+        # Copy the tensors to avoid in-place modification
+        preds_transformed = preds.clone()
+        targets_transformed = targets.clone()
+        target_errs_transformed = target_err.clone()
+
+        # Apply the transformation to the cloned tensors
+        preds_transformed[:, 2] = 10 ** (preds[:, 2] * cat_std[2] + cat_mean[2])
+        targets_transformed[:, 2] = 10 ** (targets[:, 2] * cat_std[2] + cat_mean[2])
+        target_errs_transformed[:, 2] *= cat_std[2]
+        target_errs_transformed[:, 2] = torch.abs(target_err[:, 2] * 2.302585092994046 * targets_transformed[:, 2])  # ln(10) = 2.302585092994046
+
+        # Compute the loss using the transformed tensors
+        # z_weight = (1 - target_z) ** (self.exponent) + 0.05\
+        z_weight = np.exp(-1 * target_z)
+        return torch.mean( torch.div(z_weight * (preds_transformed - targets_transformed) * (preds_transformed - targets_transformed), target_errs_transformed) )
+
+
 def load_and_preprocess():
     """Load and preprocess our data."""
     ######################## IMPORT DATA ########################
@@ -59,6 +84,8 @@ def load_and_preprocess():
         all_photo = pickle.load(f)
     photo = all_photo['data']
     photo_err = all_photo['data_err']
+    photo = photo[:, :5]
+    photo_err = photo_err[:, :5]
 
     # Take log of the fluxes to make the distributions better
     photo_err = np.abs(photo_err / (photo * np.log(10)))
@@ -156,20 +183,33 @@ def train_and_store_nn():
     # learning_rate = 0.01
     # weight_exp = 6.0
     # loss_fn = WeightedCustomLoss(exponent=weight_exp)
-    # SPECZ ONLY: [4096, [18, 13, 8, 4], 3, 0.01]
-    nodes_per_layer = [18, 13, 8, 4]
-    num_linear_output_layers = 3
-    learning_rate = 0.01
-    batch_size = 4096
+    # # SPECZ ONLY: [4096, [18, 13, 8, 4], 3, 0.01]
+    # nodes_per_layer = [18, 13, 8, 4]
+    # num_linear_output_layers = 3
+    # learning_rate = 0.01
+    # batch_size = 4096
     # SPECZ ONLY AND REDSHIFT LOSS:   [2048, [18, 15, 12, 9, 6, 4], 3, 0.01]
     # n_epochs = 1000
     # nodes_per_layer = [18, 15, 12, 9, 6, 4]
     # num_linear_output_layers = 3
     # learning_rate = 0.01
     # batch_size = 2048
-    loss_fn = CustomLossExpz()
+    # # SPECZ ONLY, AND GRIZY: [512, [5, 5, 4], 3, 0.01]
+    # nodes_per_layer = [5, 5, 4]
+    # num_linear_output_layers = 3
+    # learning_rate = 0.01
+    # batch_size = 512
+    # SPECZ ONLY, GRIZY, AND WEIGHTED LOSS: [2048, [5, 5, 4, 4, 4], 3, 0.01]
+    nodes_per_layer = [5, 5, 4, 4, 4]
+    num_linear_output_layers = 3
+    learning_rate = 0.01
+    batch_size = 2048
+
+    # loss_fn = CustomLossExpz()
+    weight_exp = 6.0
+    loss_fn = WeightedCustomExpZLoss(exponent=weight_exp)
     torch.set_default_dtype(torch.float64)
-    model = get_model(num_inputs=18, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
+    model = get_model(num_inputs=5, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
@@ -202,7 +242,7 @@ def train_and_store_nn():
                 # Predict and gradient descent
                 model.train()
                 cat_pred = model(photo_batch)
-                loss = loss_fn(cat_pred, cat_batch, cat_err_batch)# , (cat_batch[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
+                loss = loss_fn(cat_pred, cat_batch, cat_err_batch, (cat_batch[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
                 epoch_loss += loss.item()
                 optimizer.zero_grad()
                 loss.backward()
@@ -215,7 +255,7 @@ def train_and_store_nn():
             model.eval()
             losses_per_epoch['train'].append(avg_train_loss)
             test_pred = model(torch.from_numpy(photo_test))
-            test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test))# , torch.from_numpy(cat_test[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
+            test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test), torch.from_numpy(cat_test[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
             losses_per_epoch['test'].append(test_loss.item())
             LOG.info('Epoch %i/%i finished with avg training loss = %.3f', epoch + 1, n_epochs, avg_train_loss)
 
@@ -224,10 +264,10 @@ def train_and_store_nn():
                 best_loss = test_loss
                 best_epoch = epoch
                 # checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs.pkl")
-                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs_nice_loss.pkl")
+                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs_nice_loss_weighted2.pkl")
 
             # Early stopping
-            elif epoch - best_epoch >= 750:
+            elif epoch - best_epoch >= 1000:
                 LOG.info('Loss has not decreased in 50 epochs, early stopping. Best test loss is %.3f', best_loss)
                 break
 
@@ -243,7 +283,7 @@ def train_and_store_nn():
 
     # Load best model
     # resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs.pkl')
-    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs_nice_loss.pkl')
+    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs_nice_loss_weighted2.pkl')
 
 
     ######################## CHECK RESULTS AND STORE MODEL ########################
