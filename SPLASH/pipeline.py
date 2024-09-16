@@ -33,10 +33,10 @@ class Splash_Pipeline:
             Star Formation Rate [log(solar masses/yr)]
             Redshift            [redshift]
     """
-    def __init__(self, pipeline_version: str = 'full_band_no_photozs_zloss', pre_transformed: bool = False, within_4sigma: bool = True, nan_thresh_ratio: int = 0.5, random_seed: int = 22):
+    def __init__(self, pipeline_version: str = 'full_band_no_photozs_zloss_grizy_weighted', pre_transformed: bool = False, within_4sigma: bool = True, nan_thresh_ratio: int = 0.5, random_seed: int = 22):
 
         # Get users choice of host prop predictor
-        if pipeline_version not in ['full_band', 'best_band', 'weighted_full_band', 'full_band_no_photozs', 'full_band_no_photozs_zloss']:
+        if pipeline_version not in ['full_band', 'best_band', 'weighted_full_band', 'full_band_no_photozs', 'full_band_no_photozs_zloss', 'full_band_no_photozs_zloss_grizy', 'full_band_no_photozs_zloss_grizy_weighted']:
             raise ValueError(f'{pipeline_version} is not an option for your pipeline version, it must either be \'weighted_full_band\' or \'best_band\' or \'full_band\'')
         self.version = pipeline_version
 
@@ -77,7 +77,7 @@ class Splash_Pipeline:
                                            'weights_fname':  os.path.join(MODELS_DIR_PATH, 'trained_models/V2_best_sed_model.pkl')}
             host_prop_hyperparams = {'num_inputs': 14, 'num_outputs': 3, 'nodes_per_layer': [12, 10, 8, 6, 4], 'num_linear_output_layers': 3,
                                      'weights_fname':  os.path.join(MODELS_DIR_PATH, 'trained_models/V2_host_prop_best_model.pkl')}
-        elif self.version in ('full_band_no_photozs_zloss', 'full_band_no_photozs'):
+        elif self.version in ('full_band_no_photozs_zloss_grizy', 'full_band_no_photozs_zloss', 'full_band_no_photozs', 'full_band_no_photozs_zloss_grizy_weighted'):
 
             # Trained with different dataset, so need to use different means and stds
             self.hp_mu_phot= np.array([-2.08274563, -1.85131022, -1.91613353, -1.66802481, -1.64246513, -1.25522173,
@@ -97,6 +97,12 @@ class Splash_Pipeline:
             elif self.version == 'full_band_no_photozs_zloss':
                 host_prop_hyperparams = {'num_inputs': 18, 'num_outputs': 3, 'nodes_per_layer': [18, 13, 8, 4], 'num_linear_output_layers': 3,
                                         'weights_fname': os.path.join(MODELS_DIR_PATH, 'trained_models/host_prop_no_photozs_nice_loss.pkl')}
+            elif self.version == 'full_band_no_photozs_zloss_grizy':
+                host_prop_hyperparams = {'num_inputs': 5, 'num_outputs': 3, 'nodes_per_layer': [5, 5, 4], 'num_linear_output_layers': 3,
+                                        'weights_fname': os.path.join(MODELS_DIR_PATH, 'trained_models/host_prop_no_photozs_nice_loss_grizy.pkl')}
+            elif self.version == 'full_band_no_photozs_zloss_grizy_weighted':
+                host_prop_hyperparams = {'num_inputs': 5, 'num_outputs': 3, 'nodes_per_layer': [5, 5, 4, 4, 4], 'num_linear_output_layers': 3,
+                                        'weights_fname': os.path.join(MODELS_DIR_PATH, 'trained_models/host_prop_no_photozs_nice_loss_weighted2.pkl')}
 
         # Get the pooch object for loading RFs
         self.pooch = get_goodboy()
@@ -162,6 +168,8 @@ class Splash_Pipeline:
         Returns:
             The full photometric band of the galaxy as a np.ndarray.
         """
+        if isinstance(X_grizy, np.ndarray):
+            X_grizy = torch.from_numpy(X_grizy)
         other_bands = self.domain_transfer_net(X_grizy).detach().numpy()
         X_full_band = np.hstack((X_grizy, other_bands))
         return X_full_band
@@ -237,7 +245,7 @@ class Splash_Pipeline:
 
         return X, X_err
 
-    def _inverse_transform_properties(self, X: np.ndarray, X_err: np.ndarray = None) -> np.ndarray:
+    def _inverse_transform_properties(self, X: np.ndarray, X_err: Optional[np.ndarray] = None) -> np.ndarray:
         """Un-normalize the properties M_*, SFR, and redshift using the train mean and variances.
 
         Args:
@@ -246,18 +254,20 @@ class Splash_Pipeline:
         Returns:
             The un-normalized properties of the galaxies.
         """
-        if self.version in ('full_band_no_photozs', 'full_band_no_photozs_zloss'):
+        if self.version in ('full_band_no_photozs', 'full_band_no_photozs_zloss', 'full_band_no_photozs_zloss_grizy', 'full_band_no_photozs_zloss_grizy_weighted'):
             mu, std = self.hp_mu_props, self.hp_std_props
         else:
             mu, std = self.mu_props, self.std_props
 
         X = X * std + mu
-        X_err = X_err * std
+        if X_err is not None:
+            X_err = X_err * std
 
         # Un-log transform redshifts if necessary
-        if self.version in ('full_band_no_photozs_zloss', 'full_band_no_photozs'):
+        if self.version in ('full_band_no_photozs_zloss', 'full_band_no_photozs', 'full_band_no_photozs_zloss_grizy', 'full_band_no_photozs_zloss_grizy_weighted'):
             X[:, 2] = 10 ** X[:, 2]
-            X_err[:, 2] = np.abs(X_err[:, 2] * (np.log(10) * X[:, 2]))
+            if X_err is not None:
+                X_err[:, 2] = np.abs(X_err[:, 2] * (np.log(10) * X[:, 2]))
 
         return X, X_err
 
@@ -269,7 +279,15 @@ class Splash_Pipeline:
         Returns:
             The un-normalized properties of the galaxies.
         """
-        return (X - self.mu_props) / self.std_props
+    
+        if self.version in ('full_band_no_photozs', 'full_band_no_photozs_zloss', 'full_band_no_photozs_zloss_grizy', 'full_band_no_photozs_zloss_grizy_weighted'):
+            mu, std = self.hp_mu_props, self.hp_std_props
+        else:
+            mu, std = self.mu_props, self.std_props
+
+        if self.version in ('full_band_no_photozs_zloss', 'full_band_no_photozs', 'full_band_no_photozs_zloss_grizy', 'full_band_no_photozs_zloss_grizy_weighted'):
+            X[:, 2] = np.log10(X[:, 2])
+        return (X - mu) / std
 
     def _impute_photometry(self, photo: np.ndarray, photoerr: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Impute the photometry.
@@ -352,7 +370,7 @@ class Splash_Pipeline:
             raise ValueError(f'Input grizy dimensions are {X_grizy.shape} when they should be either (n, 5) or (n, 18).')
 
         # Boolean for if we are doing domain transfer
-        domain_transfer = (X_grizy.shape[1] == 5)
+        domain_transfer = (X_grizy.shape[1] == 5) and (not self.version in ('full_band_no_photozs_zloss_grizy', 'full_band_no_photozs_zloss_grizy_weighted'))
 
         # Preprocess the data
         if self.version != 'best_band' and domain_transfer:  # imputation not implemented for best_band version
@@ -375,7 +393,7 @@ class Splash_Pipeline:
                     # If a specific version, need to use different means and stds
                     if self.version in ('full_band_no_photozs', 'full_band_no_photozs_zloss'):
                         X_resampled = self._inverse_transform_photometry(X_resampled, just_grizy=False, host_prop=False)[0]
-                        X_resampled = self._transform_photometry(X_resampled, just_grizy=False, host_prop=False)[0]
+                        X_resampled = self._transform_photometry(X_resampled, just_grizy=False, host_prop=True)[0]
 
                 # Predict host properties for the resampled data
                 props_resampled = self.property_predicting_net(torch.from_numpy(X_resampled)).detach().numpy()

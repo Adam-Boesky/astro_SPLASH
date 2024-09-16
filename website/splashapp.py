@@ -150,15 +150,15 @@ def get_host_pics(ra, dec):
 
 def run_splash(grizy, grizy_err, angular_seps):
     # Load pipeline object
-    pipeline = Splash_Pipeline(pipeline_version='weighted_full_band',   # the default version of the pipeline
+    pipeline = Splash_Pipeline(pipeline_version='full_band_no_photozs_zloss',   # the default version of the pipeline
                                pre_transformed=False,                   # whether the given data is pre-logged and nnormalized
                                within_4sigma=True)                      # whether we only want to classify objects with properties within 4-sigma of the training set
     # Predict the classes. n_resamples is the number of boostraps for getting the median predicted host properties.
     # in order: (mass, SFR, redshift)
     norm_values, norm_val_errs = pipeline.predict_host_properties(grizy, grizy_err, 10, return_normalized=True)
-    values, val_errs = pipeline._inverse_transform_properties(norm_values[0], norm_val_errs[0])
-    mass, sfr, redshift = values
-    mass_err, sfr_err, redshift_err = val_errs
+    values, val_errs = pipeline._inverse_transform_properties(norm_values, norm_val_errs)
+    mass, sfr, redshift = values[0]
+    mass_err, sfr_err, redshift_err = val_errs[0]
     probs = pipeline.predict_probs(grizy, angular_seps, grizy_err, n_resamples=50)
     # I only care about Ia probability...
     Ia_prob = probs[0][0]
