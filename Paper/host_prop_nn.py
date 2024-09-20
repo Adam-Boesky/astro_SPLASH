@@ -71,7 +71,6 @@ class WeightedCustomExpZLoss(nn.Module):
         target_errs_transformed[:, 2] = torch.abs(target_err[:, 2] * 2.302585092994046 * targets_transformed[:, 2])  # ln(10) = 2.302585092994046
 
         # Compute the loss using the transformed tensors
-        # z_weight = (1 - target_z) ** (self.exponent) + 0.05\
         z_weight = np.exp(-1 * target_z)
         return torch.mean( torch.div(z_weight * (preds_transformed - targets_transformed) * (preds_transformed - targets_transformed), target_errs_transformed) )
 
@@ -144,6 +143,7 @@ def load_and_preprocess():
     photo_train, photo_test, cat_train, cat_test, photo_err_train, photo_err_test, cat_err_train, cat_err_test = \
         train_test_split(photo_norm, cat_norm, photo_err_norm, cat_err_norm, shuffle=True, test_size=0.2, random_state=22)
 
+    LOG.info('Length of speczs = %i', photo_norm.shape[0])
 
     return all_cat, all_photo, photo_train, photo_test, cat_train, cat_test, photo_err_train, photo_err_test, cat_err_train, cat_err_test, photo_norm, photo_mean, photo_std, photo_err_norm, cat_norm, cat_mean, cat_std, cat_err_norm
 

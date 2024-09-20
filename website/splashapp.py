@@ -150,9 +150,9 @@ def get_host_pics(ra, dec):
 
 def run_splash(grizy, grizy_err, angular_seps):
     # Load pipeline object
-    pipeline = Splash_Pipeline(pipeline_version='full_band_no_photozs_zloss',   # the default version of the pipeline
-                               pre_transformed=False,                   # whether the given data is pre-logged and nnormalized
-                               within_4sigma=True)                      # whether we only want to classify objects with properties within 4-sigma of the training set
+    pipeline = Splash_Pipeline(pipeline_version='full_band_no_photozs_zloss_grizy_weighted',    # the default version of the pipeline
+                               pre_transformed=False,                                           # whether the given data is pre-logged and nnormalized
+                               within_4sigma=True)                                              # whether we only want to classify objects with properties within 4-sigma of the training set
     # Predict the classes. n_resamples is the number of boostraps for getting the median predicted host properties.
     # in order: (mass, SFR, redshift)
     norm_values, norm_val_errs = pipeline.predict_host_properties(grizy, grizy_err, 10, return_normalized=True)
