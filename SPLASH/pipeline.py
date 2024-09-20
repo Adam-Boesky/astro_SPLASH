@@ -376,7 +376,7 @@ class Splash_Pipeline:
         if self.version != 'best_band' and domain_transfer:  # imputation not implemented for best_band version
             X_grizy, X_grizy_err = self._impute_photometry(X_grizy, X_grizy_err)
         if not self.pre_transformed:
-            X_grizy, X_grizy_err = self._transform_photometry(X_grizy, X_grizy_err, just_grizy=domain_transfer, host_prop=not domain_transfer)
+            X_grizy, X_grizy_err = self._transform_photometry(X_grizy, X_grizy_err, just_grizy=X_grizy.shape[1]==5, host_prop=not domain_transfer)
 
         all_predictions = []
         if X_grizy_err is not None:
