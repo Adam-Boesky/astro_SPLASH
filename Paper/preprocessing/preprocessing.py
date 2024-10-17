@@ -273,6 +273,11 @@ def ab_mag_to_flux(AB_mag: np.ndarray) -> np.ndarray:
     return 10**((AB_mag - 8.9) / -2.5) * 1000
 
 
+def flux_to_ab_mag(flux: np.ndarray) -> np.ndarray:
+    """Convert flux in units of mJy to AB magnitude"""
+    return -2.5 * np.log10(flux / 1000) + 8.9
+
+
 def filter_matrix(matrix, matrix_id, common_ids):
     """Function to filter matrix based on common IDs"""
     sorted_indices = np.argsort(matrix_id)

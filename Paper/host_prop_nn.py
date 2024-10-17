@@ -2,12 +2,14 @@ import os
 import pickle
 import numpy as np
 from pathlib import Path
+from astropy.cosmology import Planck18 as cosmo
 
 import torch
 
 from sklearn.model_selection import train_test_split
 from logger import get_clean_logger
 from torch import nn
+from preprocessing.preprocessing import flux_to_ab_mag, ab_mag_to_flux
 from neural_net import (WeightedCustomLoss, CustomLoss, checkpoint, get_model, get_tensor_batch,
                         plot_real_v_preds, plot_training_loss, resume, normalize_arr)
 
@@ -75,6 +77,12 @@ class WeightedCustomExpZLoss(nn.Module):
         return torch.mean( torch.div(z_weight * (preds_transformed - targets_transformed) * (preds_transformed - targets_transformed), target_errs_transformed) )
 
 
+def get_intrinsic_mags(mags: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Get the intrinsic magnitudes of an object"""
+    d_pc = cosmo.luminosity_distance(z).to('pc').value.reshape(-1, 1)
+    return mags - 2.5*np.log10((d_pc / 10)*(d_pc / 10))
+
+
 def load_and_preprocess():
     """Load and preprocess our data."""
     ######################## IMPORT DATA ########################
@@ -82,6 +90,16 @@ def load_and_preprocess():
     with open(os.path.join(PATH_TO_CLEAN_DATA, 'all_photometry.pkl'), 'rb') as f:
         all_photo = pickle.load(f)
     photo = all_photo['data']
+
+    with open(os.path.join(PATH_TO_CLEAN_DATA, 'all_cat.pkl'), 'rb') as f:
+        all_cat = pickle.load(f)
+    cat = all_cat['data']
+
+    # Convert to intrinsic magnitudes
+    mags = flux_to_ab_mag(photo)
+    intrinsic_mags = get_intrinsic_mags(mags, cat[:, 2])
+    photo = ab_mag_to_flux(intrinsic_mags)
+
     photo_err = all_photo['data_err']
     photo = photo[:, :5]
     photo_err = photo_err[:, :5]
@@ -90,9 +108,6 @@ def load_and_preprocess():
     photo_err = np.abs(photo_err / (photo * np.log(10)))
     photo = np.log10(photo)
 
-    with open(os.path.join(PATH_TO_CLEAN_DATA, 'all_cat.pkl'), 'rb') as f:
-        all_cat = pickle.load(f)
-    cat = all_cat['data']
     LOG.info('Fixing the error for %i objects', np.sum(all_cat['data_err'][:, 2] == 0.01))
     all_cat['data_err'][:, 2][all_cat['data_err'][:, 2] == 0.01] = 0.001 # Drop the spectroscopic errors down from the already low error
 
@@ -155,7 +170,14 @@ def train_and_store_nn():
         all_cat, all_photo, photo_train, photo_test, cat_train, cat_test, photo_err_train, photo_err_test, cat_err_train, \
             cat_err_test, photo_norm, photo_mean, photo_std, photo_err_norm, cat_norm, cat_mean, cat_std, cat_err_norm = load_and_preprocess()
 
-
+    photo_train = np.hstack((photo_train, cat_train[:, 2].reshape(-1, 1)))
+    photo_test = np.hstack((photo_test, cat_test[:, 2].reshape(-1, 1)))
+    cat_err_train = cat_err_train[:, :2]
+    cat_err_test = cat_err_test[:, :2]
+    cat_train = cat_train[:, :2]
+    cat_test = cat_test[:, :2]
+    cat_mean = cat_mean[:2]
+    cat_std = cat_std[:2]
 
 
 
@@ -199,17 +221,24 @@ def train_and_store_nn():
     # num_linear_output_layers = 3
     # learning_rate = 0.01
     # batch_size = 512
+    # # SPECZ ONLY, GRIZY, AND WEIGHTED LOSS: [2048, [5, 5, 4, 4, 4], 3, 0.01]
+    # nodes_per_layer = [5, 5, 4, 4, 4]
+    # num_linear_output_layers = 3
+    # learning_rate = 0.01
+    # batch_size = 2048
     # SPECZ ONLY, GRIZY, AND WEIGHTED LOSS: [2048, [5, 5, 4, 4, 4], 3, 0.01]
-    nodes_per_layer = [5, 5, 4, 4, 4]
+    nodes_per_layer = [5, 4, 3]
     num_linear_output_layers = 3
     learning_rate = 0.01
     batch_size = 2048
 
     # loss_fn = CustomLossExpz()
-    weight_exp = 6.0
-    loss_fn = WeightedCustomExpZLoss(exponent=weight_exp)
+    # weight_exp = 6.0
+    # loss_fn = WeightedCustomExpZLoss(exponent=weight_exp)
+    loss_fn = CustomLoss()
     torch.set_default_dtype(torch.float64)
-    model = get_model(num_inputs=5, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
+    # model = get_model(num_inputs=5, num_outputs=3, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
+    model = get_model(num_inputs=6, num_outputs=2, nodes_per_layer=nodes_per_layer, num_linear_output_layers=num_linear_output_layers)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
@@ -242,7 +271,8 @@ def train_and_store_nn():
                 # Predict and gradient descent
                 model.train()
                 cat_pred = model(photo_batch)
-                loss = loss_fn(cat_pred, cat_batch, cat_err_batch, (cat_batch[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
+                # loss = loss_fn(cat_pred, cat_batch, cat_err_batch, (cat_batch[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
+                loss = loss_fn(cat_pred, cat_batch, cat_err_batch)
                 epoch_loss += loss.item()
                 optimizer.zero_grad()
                 loss.backward()
@@ -255,7 +285,7 @@ def train_and_store_nn():
             model.eval()
             losses_per_epoch['train'].append(avg_train_loss)
             test_pred = model(torch.from_numpy(photo_test))
-            test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test), torch.from_numpy(cat_test[:, -1] * cat_std[-1] + cat_mean[-1]).unsqueeze(1))
+            test_loss = loss_fn(test_pred, torch.from_numpy(cat_test), torch.from_numpy(cat_err_test))
             losses_per_epoch['test'].append(test_loss.item())
             LOG.info('Epoch %i/%i finished with avg training loss = %.3f', epoch + 1, n_epochs, avg_train_loss)
 
@@ -264,10 +294,10 @@ def train_and_store_nn():
                 best_loss = test_loss
                 best_epoch = epoch
                 # checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs.pkl")
-                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs_nice_loss_weighted2.pkl")
+                checkpoint(model, "/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_nn_abs_mag.pkl")
 
             # Early stopping
-            elif epoch - best_epoch >= 1000:
+            elif epoch - best_epoch >= 100:
                 LOG.info('Loss has not decreased in 50 epochs, early stopping. Best test loss is %.3f', best_loss)
                 break
 
@@ -279,11 +309,11 @@ def train_and_store_nn():
         # Plot training performance
         with open('final_host_prop_train_history.pkl', 'wb') as f:
             pickle.dump(losses_per_epoch, f)
-        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/Users/adamboesky/Research/ay98/Weird_Galaxies/Paper/V2_host_prop_nn_training_plots/final_loss_v_epoch.png')
+        plot_training_loss(losses_per_epoch['train'], test_losses=losses_per_epoch['test'], filename='/Users/adamboesky/Research/ay98/Weird_Galaxies/Paper/final_loss_v_epoch.png')
 
     # Load best model
     # resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs.pkl')
-    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs_nice_loss_weighted2.pkl')
+    resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_nn_abs_mag.pkl')
 
 
     ######################## CHECK RESULTS AND STORE MODEL ########################
@@ -297,7 +327,7 @@ def train_and_store_nn():
         test_pred: torch.Tensor = model(torch.from_numpy(photo_test))
         test_pred_untrans = test_pred.detach().numpy()
         for idx in range(test_pred.shape[1]):
-            plot_real_v_preds(cat_test[:, idx] * cat_std[idx] + cat_mean[idx], test_pred_untrans[:, idx] * cat_std[idx] + cat_mean[idx], real_err=cat_err_test[:, idx] * cat_std[idx], param=all_cat['keys'][idx], plot_dirname='Paper/V2_host_prop_nn_training_plots', filename_postfix=all_cat['keys'][idx])
+            plot_real_v_preds(cat_test[:, idx] * cat_std[idx] + cat_mean[idx], test_pred_untrans[:, idx] * cat_std[idx] + cat_mean[idx], real_err=cat_err_test[:, idx] * cat_std[idx], param=all_cat['keys'][idx], plot_dirname='Paper/hp_abs_mag', filename_postfix=all_cat['keys'][idx])
 
 
 if __name__ == '__main__':
