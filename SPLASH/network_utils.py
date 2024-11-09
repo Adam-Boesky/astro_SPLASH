@@ -1,5 +1,9 @@
+import numpy as np
+
 from torch import nn, load
 from typing import List
+from astropy.cosmology import Planck18 as cosmo
+
 
 def get_model(num_inputs: int, num_outputs: int, nodes_per_layer: List[int], num_linear_output_layers: int = 2) -> nn.Sequential:
     """Create a NN with given structure."""
@@ -25,3 +29,25 @@ def get_model(num_inputs: int, num_outputs: int, nodes_per_layer: List[int], num
 def resume(model, filepath):
     """Resume pytorch model."""
     model.load_state_dict(load(filepath))
+
+
+def get_intrinsic_mags(mags: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Get the intrinsic magnitudes of an object"""
+    d_pc = cosmo.luminosity_distance(z).to('pc').value.reshape(-1, 1)
+    return mags - 5 * np.log10(d_pc / 10)
+
+
+def get_mag_at_z(intrinsic_mags: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Get the apparent magnitudes at a given redshift"""
+    d_pc = cosmo.luminosity_distance(z).to('pc').value.reshape(-1, 1)
+    return intrinsic_mags + 5 * np.log10(d_pc / 10)
+
+
+def ab_mag_to_flux(AB_mag: np.ndarray) -> np.ndarray:
+    """Convert AB magnitude to flux in units of mJy"""
+    return 10**((AB_mag - 8.9) / -2.5) * 1000
+
+
+def flux_to_ab_mag(flux: np.ndarray) -> np.ndarray:
+    """Convert flux in units of mJy to AB magnitude"""
+    return -2.5 * np.log10(flux / 1000) + 8.9
