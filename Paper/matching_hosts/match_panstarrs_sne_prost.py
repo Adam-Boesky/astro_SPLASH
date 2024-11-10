@@ -15,7 +15,7 @@ from pathlib import Path
 # from glob import glob
 # from astropy.visualization import simple_norm
 # from astropy.stats import SigmaClip
-# from astropy.coordinates import Angle
+from astropy.coordinates import Angle
 # from astropy.io import ascii
 from astropy.cosmology import Planck18 as cosmo  # Using the Planck 2018 cosmology
 # from astropy import units as u
@@ -55,6 +55,7 @@ def get_current_data():
     # Grab the sne data
     with open(os.path.join(PATH_TO_STORAGE, 'sn_coords_clean.csv'), 'rb') as f:
         sne = pickle.load(f)
+
     return sne
 
     # # Create empty columns
@@ -302,13 +303,18 @@ def match_host_sne():
 
     # Grab the current data
     sne = get_current_data()
-    sne = sne[:2]  # TODO: TAKE THIS TEST LINE OUT
+
+    # Drop the unclassified SNe and grab the ra, dec
+    classified_mask = np.array([isinstance(t, str) and t not in ('Candidate', 'candidate') for t in sne['claimedtype']])
+    sne = sne[classified_mask]
+    ra = Angle([ra.split(',')[0] for ra in sne['ra']], unit='hourangle').deg
+    dec = Angle([f'{dec.split(",")[0]} degrees' for dec in sne['dec']]).deg
 
     # Associate sne with their hosts
     pipeline = Splash_Pipeline()
     transient_catalog = pipeline.get_transient_catalog(
-        sne['ra'],
-        sne['dec'],
+        ra,
+        dec,
         names=sne['event'],
         parallel=False,
         cat_cols=True,
