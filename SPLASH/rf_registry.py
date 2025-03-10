@@ -20,17 +20,11 @@ def update_registry():
     NOTE: This must be ran each time that a random forest is retrained.
     """
     registry = {}
-    for sklearn_version in ('new_skl', 'old_skl'):
-        for fname in [
-            f"trained_models/ovr_rfs/{sklearn_version}/II_(p&l)_rf.pbz2",
-            f"trained_models/ovr_rfs/{sklearn_version}/IIn_rf.pbz2",
-            f"trained_models/ovr_rfs/{sklearn_version}/Ia_rf.pbz2",
-            f"trained_models/ovr_rfs/{sklearn_version}/Ib&c_rf.pbz2",
-            f"trained_models/ovr_rfs/{sklearn_version}/slsn_rf.pbz2",
-            f"trained_models/rf_classifier_new_version.pbz2",
-            f"trained_models/rf_classifier_old_version.pbz2",
-            ]:
-            registry[fname] = f'md5:{calculate_md5(os.path.join(SPLASH_BASEPATH, fname))}'
+    for fname in [
+        f"trained_models/rf_classifier_new_version.pbz2",
+        f"trained_models/rf_classifier_old_version.pbz2",
+    ]:
+        registry[fname] = f'md5:{calculate_md5(os.path.join(SPLASH_BASEPATH, fname))}'
     with open(os.path.join(SPLASH_BASEPATH, 'trained_models/rf_registry.pkl'), 'wb') as f:
         pickle.dump(registry, f)
 
