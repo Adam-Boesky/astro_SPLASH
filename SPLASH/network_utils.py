@@ -1,7 +1,7 @@
 import numpy as np
 
 from torch import nn, load
-from typing import List
+from typing import List, Optional
 from astropy.cosmology import Planck18 as cosmo
 
 
@@ -43,11 +43,19 @@ def get_mag_at_z(intrinsic_mags: np.ndarray, z: np.ndarray) -> np.ndarray:
     return intrinsic_mags + 5 * np.log10(d_pc / 10)
 
 
-def ab_mag_to_flux(AB_mag: np.ndarray) -> np.ndarray:
+def ab_mag_to_flux(AB_mag: np.ndarray, magerr: Optional[np.ndarray] = None) -> np.ndarray:
     """Convert AB magnitude to flux in units of mJy"""
-    return 10**((AB_mag - 8.9) / -2.5) * 1000
+    flux = 10**((AB_mag - 8.9) / -2.5) * 1000
+    if magerr is not None:
+        fluxerr = (magerr * (np.log(10) * flux)) / 2.5
+        return flux, fluxerr
+    return flux
 
 
-def flux_to_ab_mag(flux: np.ndarray) -> np.ndarray:
+def flux_to_ab_mag(flux: np.ndarray, fluxerr: Optional[np.ndarray] = None) -> np.ndarray:
     """Convert flux in units of mJy to AB magnitude"""
-    return -2.5 * np.log10(flux / 1000) + 8.9
+    mag = -2.5 * np.log10(flux / 1000) + 8.9
+    if fluxerr is not None:
+        magerr = (2.5 * fluxerr) / (np.log(10) * flux)
+        return mag, magerr
+    return mag
