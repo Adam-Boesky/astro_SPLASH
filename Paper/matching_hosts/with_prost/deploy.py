@@ -9,7 +9,7 @@ def deploy_associaters():
 
     # Chunk and deploy
     starting_ind = 0
-    chunk_len = 100
+    chunk_len = 1000
     chunk_counter = 0
     ps = []
     while starting_ind < len(sne):
@@ -21,7 +21,7 @@ def deploy_associaters():
         os.environ['STARTING_IND'] = str(starting_ind)
         os.environ['ENDING_IND'] = str(ending_ind)
 
-        sbatch_command = f'sbatch --wait run_one_chunk.sh'
+        sbatch_command = f'sbatch --wait /n/home04/aboesky/berger/Weird_Galaxies/Paper/matching_hosts/with_prost/run_one_chunk.sh'
         proc = Popen(sbatch_command, shell=True)
         ps.append(proc)
 

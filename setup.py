@@ -13,10 +13,13 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
     ],
-    install_requires=['torch',
-                      'numpy',
-                      'scikit-learn',
-                      'pooch'],
+    install_requires=[
+        'torch',
+        'numpy',
+        'scikit-learn>=0.22.0',
+        'pooch',
+        'astro-prost>=1.2.6',
+        ],
     include_package_data=True
 )
 

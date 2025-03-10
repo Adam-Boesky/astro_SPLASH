@@ -6,8 +6,8 @@
 #SBATCH -t 0-1:00                          # Runtime in D-HH:MM, minimum of 10 minutes
 
 # Paths to STDOUT or STDERR files should be absolute or relative to current working directory
-#SBATCH -o cluster_logs/myoutput_\%j.out                          # File to which STDOUT will be written, %j inserts jobid
-#SBATCH -e cluster_logs/myerrors_\%j.err                          # File to which STDERR will be written, %j inserts jobid
+#SBATCH -o /n/home04/aboesky/berger/Weird_Galaxies/hp_abs_mag_grid_search/cluster_logs/myoutput_%j.out                  # File to which STDOUT will be written, %j inserts jobid
+#SBATCH -e /n/home04/aboesky/berger/Weird_Galaxies/hp_abs_mag_grid_search/cluster_logs/myerrors_%j.err                  # File to which STDERR will be written, %j inserts jobid
 #SBATCH --mail-user=aboesky@college.harvard.edu     # Send email to user
 
 # Remember:
