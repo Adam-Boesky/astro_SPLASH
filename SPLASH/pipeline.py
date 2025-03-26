@@ -1,13 +1,15 @@
 import os
 import bz2
+import json
 import torch
 import pickle
+import hashlib
 import sklearn
 import pkg_resources
 import numpy as np
 import pandas as pd
 
-from typing import Union, Tuple, Dict, Optional
+from typing import Any, Union, Tuple, Dict, Optional
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import KNNImputer, MissingIndicator
 from scipy.stats import gamma, halfnorm, uniform
@@ -72,9 +74,6 @@ class Splash_Pipeline:
         # Get the pooch object for loading RFs
         self.pooch = get_goodboy()
 
-        # The source catalog used for redshift and angular separation values
-        self.transient_catalog: Optional[pd.DataFrame] = None
-
         # Handle some versioning
         if pkg_resources.parse_version(sklearn.__version__) >= pkg_resources.parse_version('1.3.0'):
             self.sklearn_version = 'new_skl'
@@ -102,6 +101,41 @@ class Splash_Pipeline:
         self.property_predicting_net.eval()
         # 2. Classifier
         self.random_forest = self._load_rf(self.rf_fname)
+
+        # Initialize a cache for transient catalogs so that we don't call get_transient_catalog multiple times for the
+        # same input values. Also initialize a current hash for the cache so we can refer to the one just retrieved
+        # more easily.
+        self._current_transient_catalog_hash: Optional[str] = None
+        self._transient_catalog_cache: Dict[str, pd.DataFrame] = {}
+
+    @property
+    def transient_catalog(self) -> Optional[pd.DataFrame]:
+        return self._transient_catalog_cache.get(self._current_transient_catalog_hash)
+
+    def _hash_transient_catalog_inputs(
+        self,
+        ra: np.ndarray,
+        dec: np.ndarray,
+        redshift: Optional[np.ndarray],
+        names: Optional[np.ndarray],
+        kwargs: Dict[str, Any]
+    ) -> str:
+        hasher = hashlib.sha256()
+
+        # Hash all array inputs
+        for array in (ra, dec, redshift, names):
+            if array is None:
+                hasher.update(b"None")
+            else:
+                hasher.update(array.tobytes())
+                hasher.update(str(array.shape).encode())
+                hasher.update(str(array.dtype).encode())
+
+        # Hash kwargs deterministically
+        kwargs_serialized = json.dumps(kwargs, sort_keys=True, default=str)
+        hasher.update(kwargs_serialized.encode())
+
+        return hasher.hexdigest()
 
     def _load_rf(self, rf_fname: str) -> RandomForestClassifier:
         """Load random forest classifier."""
@@ -255,16 +289,16 @@ class Splash_Pipeline:
         """
         if (ra is not None) and (dec is not None) and (grizy is None) and (grizy_err is None):
             # If ra and dec are given, use Prost to get the host photometry
-            self.get_transient_catalog(ra, dec, redshift=redshift, cat_cols=True, calc_host_props=True)
-            grizy = self.transient_catalog[
+            transient_catalog = self.get_transient_catalog(ra, dec, redshift=redshift, cat_cols=True, calc_host_props=True)
+            grizy = transient_catalog[
                 ['gKronMag', 'rKronMag', 'iKronMag', 'zKronMag', 'yKronMag']
             ].to_numpy()
-            grizy_err = self.transient_catalog[
+            grizy_err = transient_catalog[
                 ['gKronMagErr', 'rKronMagErr', 'iKronMagErr', 'zKronMagErr', 'yKronMagErr']
             ].to_numpy()
             if redshift is None:
-                redshift = self.transient_catalog['host_redshift_mean'].to_numpy()
-                redshift_err = self.transient_catalog['host_redshift_std'].to_numpy()
+                redshift = transient_catalog['host_redshift_mean'].to_numpy()
+                redshift_err = transient_catalog['host_redshift_std'].to_numpy()
 
             # Transform mag -> mJy
             grizy, grizy_err = ab_mag_to_flux(grizy, magerr=grizy_err)
@@ -478,6 +512,11 @@ class Splash_Pipeline:
             **kwargs,
         ) -> pd.DataFrame:
         """Given the RA and DEC of the transients, get the transient catalog using Prost."""
+        # Check if we have already gotten the catalog for the given inputs
+        cat_hash = self._hash_transient_catalog_inputs(ra, dec, redshift, names, kwargs)
+        if cat_hash in self._transient_catalog_cache:
+            return self._transient_catalog_cache[cat_hash]
+
         # Define priors and likelihoods
         priorfunc_z = halfnorm(loc=0.0001, scale=0.5)
         priorfunc_offset = uniform(loc=0, scale=10)
@@ -505,7 +544,7 @@ class Splash_Pipeline:
 
         # Associate the sample
         print('Associating the catalog!')
-        self.transient_catalog = associate_sample(
+        transient_catalog: pd.DataFrame = associate_sample(
             transient_catalog,
             priors=priors,
             likes=likes,
@@ -516,6 +555,10 @@ class Splash_Pipeline:
         )
 
         # Reorder the catalog
-        self.transient_catalog = self.transient_catalog.set_index('name', drop=True).loc[names].reset_index(drop=True)
+        transient_catalog = transient_catalog.set_index('name', drop=True).loc[names].reset_index(drop=True)
 
-        return self.transient_catalog
+        # Cache the catalog
+        self._transient_catalog_cache[cat_hash] = transient_catalog
+        self._current_transient_catalog_hash = cat_hash
+
+        return transient_catalog
