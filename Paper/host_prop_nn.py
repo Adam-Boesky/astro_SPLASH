@@ -226,11 +226,16 @@ def train_and_store_nn():
     # num_linear_output_layers = 3
     # learning_rate = 0.01
     # batch_size = 2048
-    # SPECZ ONLY, GRIZY, AND WEIGHTED LOSS: [2048, [5, 5, 4, 4, 4], 3, 0.01]
-    nodes_per_layer = [5, 4, 3]
-    num_linear_output_layers = 3
+    # # SPECZ ONLY, GRIZY, AND WEIGHTED LOSS: [2048, [5, 5, 4, 4, 4], 3, 0.01]
+    # nodes_per_layer = [5, 4, 3]
+    # num_linear_output_layers = 3
+    # learning_rate = 0.01
+    # batch_size = 2048
+    # ABSOLUTE MAGNITUDE:  [1024, [6, 5, 4, 3], 2, 0.01]
+    nodes_per_layer = [6, 5, 4, 3]
+    num_linear_output_layers = 2
     learning_rate = 0.01
-    batch_size = 2048
+    batch_size = 1024
 
     # loss_fn = CustomLossExpz()
     # weight_exp = 6.0
@@ -327,7 +332,7 @@ def train_and_store_nn():
         test_pred: torch.Tensor = model(torch.from_numpy(photo_test))
         test_pred_untrans = test_pred.detach().numpy()
         for idx in range(test_pred.shape[1]):
-            plot_real_v_preds(cat_test[:, idx] * cat_std[idx] + cat_mean[idx], test_pred_untrans[:, idx] * cat_std[idx] + cat_mean[idx], real_err=cat_err_test[:, idx] * cat_std[idx], param=all_cat['keys'][idx], plot_dirname='Paper/hp_abs_mag', filename_postfix=all_cat['keys'][idx])
+            plot_real_v_preds(cat_test[:, idx] * cat_std[idx] + cat_mean[idx], test_pred_untrans[:, idx] * cat_std[idx] + cat_mean[idx], real_err=cat_err_test[:, idx] * cat_std[idx], param=all_cat['keys'][idx], plot_dirname='Paper/V2_host_prop_nn_training_plots', filename_postfix=all_cat['keys'][idx])
 
 
 if __name__ == '__main__':

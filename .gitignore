@@ -16,3 +16,5 @@ dist/
 !SPLASH/trained_models/*.pbz2
 *splash.html
 *transients_*/
+sfddata-master/
+testing.ipynb
