@@ -1,9 +1,9 @@
 """Handle the fetching of random forests using pooch."""
+import hashlib
 import os
 import pickle
-import hashlib
 
-from pooch import create, Pooch, os_cache
+from pooch import Pooch, create, os_cache
 
 SPLASH_BASEPATH = os.path.dirname(os.path.realpath(__file__))
 

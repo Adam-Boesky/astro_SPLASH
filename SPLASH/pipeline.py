@@ -1,40 +1,38 @@
-import os
+"""The SPLASH pipeline object."""
 import bz2
-import json
-import torch
-import pickle
 import hashlib
-import sklearn
-import pkg_resources
+import json
+import os
+import pickle
+from typing import Any, Dict, Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
-
-from typing import Any, Union, Tuple, Dict, Optional
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import KNNImputer, MissingIndicator
-from scipy.stats import gamma, halfnorm, uniform
-from astropy.coordinates import SkyCoord
-
+import pkg_resources
+import sklearn
+import torch
 from astro_prost.associate import associate_sample, prepare_catalog
 from astro_prost.helpers import SnRateAbsmag
+from astropy.coordinates import SkyCoord
+from scipy.stats import gamma, halfnorm, uniform
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.impute import KNNImputer, MissingIndicator
 
-from .network_utils import resume, get_model, get_intrinsic_mags, get_mag_at_z, flux_to_ab_mag, ab_mag_to_flux
+from .network_utils import (ab_mag_to_flux, flux_to_ab_mag, get_intrinsic_mags,
+                            get_mag_at_z, get_model, resume)
 from .rf_registry import get_goodboy
-
 
 torch.set_default_dtype(torch.float64)  # set the pytorch default to a float64
 MODELS_DIR_PATH = os.path.dirname(os.path.realpath(__file__))
 
 
 class Splash_Pipeline:
-    """Our classification pipeline. The defaul pipeline classifies supernovae with a 3-step process:
+    """The SPLASH classification pipeline. The default pipeline classifies supernovae with a 3-step process:
             0. Impute the nan values of the given photometry and errors.
-            1. Given grizy photometry of a SN host, conduct domain transfer by predicted 13 more
-               photometric bands with an MLP.
-            2. Predict the SN host's stellar mass, SFR, and redshift from its 18-band photometry
+            1. Predict the SN host's stellar mass, SFR, and redshift from its grizy absolute photometry and redshift
                using a MLP.
-            3. Give the properties and the SN-host angular separation to a random forest to infer
-               SN class.
+            2. Given SN host properties (stellar mass, SFR, redshift, angular separation), classify SNe using a
+               random forest.
 
        Units:
             Photometry          [mJy]
@@ -45,7 +43,7 @@ class Splash_Pipeline:
     """
     def __init__(self, pre_transformed: bool = False, within_4sigma: bool = True, nan_thresh_ratio: int = 0.5, random_seed: int = 22):
 
-        np.random.seed(random_seed)                                                                 # why 22? my lucky number
+        np.random.seed(random_seed)                                                                 # why 22? Adam's lucky number
 
         # Pipeline configuration
         self.class_labels = ['Ia', 'Ib/c', 'SLSN', 'IIn', 'II (P/L)']                               # labels of classes that SPLASH classifies
@@ -57,12 +55,12 @@ class Splash_Pipeline:
         self.within_4sigma = within_4sigma                                                          # only return classes for galaxies within 4 sigma of train data (return -1 if outside)
 
         # Mean and std for normalization
-        self.mu_props = np.array([9.99878348, -0.13575662])
+        self.mu_props = np.array([9.99878348, -0.13575662])  # stellar mass, SFR
         self.std_props = np.array([0.83429481, 1.04090293])
         self.mu_X = np.array([14.82211687, 15.05355227, 14.98872896, 15.23683768, 15.26239736, -0.3170728954166741])  # g,r,i,z,y,redshift
         self.std_X = np.array([0.73430271, 0.70560987, 0.7404269, 0.71824696, 0.79342847, 0.26033958098503646])
 
-        # Hyperparameters for the pipeline
+        # Hyperparameters for the MLP
         nn_hyperparams = {
             'num_inputs': 6,
             'num_outputs': 2,
@@ -74,7 +72,7 @@ class Splash_Pipeline:
         # Get the pooch object for loading RFs
         self.pooch = get_goodboy()
 
-        # Handle some versioning
+        # Handle some versioning due to sklearn incompatibilities
         if pkg_resources.parse_version(sklearn.__version__) >= pkg_resources.parse_version('1.3.0'):
             self.sklearn_version = 'new_skl'
             self.imputer_fname = 'knn_imputers_new_version.pkl'
@@ -120,6 +118,7 @@ class Splash_Pipeline:
         names: Optional[np.ndarray],
         kwargs: Dict[str, Any]
     ) -> str:
+        """Create a hash for the inputs of a given transient catalog."""
         hasher = hashlib.sha256()
 
         # Hash all array inputs
@@ -161,16 +160,10 @@ class Splash_Pipeline:
         Args:
             X (np.ndarray): Data to transform.
             X_err (np.ndarray): Data errors to transform.
-            just_grizy (bool): Whether the data is just grizy or all 18 bands.
-            host_prop (bool): Whether the data is host properties or not (only works with
-                              self.version='full_band_no_photozs').
         Returns:
             Log transformed and normalized X and X_err.
 
-        NOTE: Bands are assumed to be in the order: ['G', 'R', 'I', 'Z', 'Y', 'J', 'H',
-                                                     'Ks', 'CH1', 'CH2', 'MIPS24','MIPS70',
-                                                     'PACS100', 'MIPS160', 'PACS160',
-                                                     'SPIRE250', 'SPIRE350', 'SPIRE500']
+        NOTE: Bands are assumed to be in the order: ['G', 'R', 'I', 'Z', 'Y']
         """
 
         # Convert to intrinsic magnitudes
@@ -193,16 +186,10 @@ class Splash_Pipeline:
         Args:
             X (np.ndarray): Data to transform.
             X_err (np.ndarray): Data errors to transform.
-            just_grizy (bool): Whether the data is just grizy or all 18 bands.
-            host_prop (bool): Whether the data is host properties or not (only works with
-                                self.version='full_band_no_photozs').
         Returns:
             Inverse transformed X and X_err.
         
-        NOTE: Bands are assumed to be in the order: ['G', 'R', 'I', 'Z', 'Y', 'J', 'H',
-                                                     'Ks', 'CH1', 'CH2', 'MIPS24','MIPS70',
-                                                     'PACS100', 'MIPS160', 'PACS160',
-                                                     'SPIRE250', 'SPIRE350', 'SPIRE500']
+        NOTE: Bands are assumed to be in the order: ['G', 'R', 'I', 'Z', 'Y']
         """
 
         # Inverse normalize
@@ -223,25 +210,25 @@ class Splash_Pipeline:
         return X, X_err
 
     def _inverse_transform_properties(self, X: np.ndarray, X_err: Optional[np.ndarray] = None) -> np.ndarray:
-        """Un-normalize the properties M_*, SFR, and redshift using the train mean and variances.
+        """Un-normalize the properties M_* and SFR using the train mean and variances.
 
         Args:
             X (np.ndarray): Properties of galaxies.
             X_err (np.ndarray): Errors on the properties.
         Returns:
-            The un-normalized properties of the galaxies.
+            The un-normalized properties of the galaxies and property errors if given.
         """
         X = X * self.std_props + self.mu_props
         if X_err is not None:
             X_err = X_err * self.std_props
+            return X, X_err
+        return X
 
-        return X, X_err
-
-    def _tranform_properties(self, X: np.ndarray) -> np.ndarray:
-        """Normalize the properties M_*, SFR, and redshift using the train mean and variances.
+    def _transform_properties(self, X: np.ndarray) -> np.ndarray:
+        """Normalize the properties M_* and SFR using the train mean and variances.
 
         Args:
-            X (np.ndarray): Properties of galaxies.
+            X (np.indarray): Properties of galaxies.
         Returns:
             The un-normalized properties of the galaxies.
         """
@@ -270,18 +257,23 @@ class Splash_Pipeline:
             n_resamples: int = 10,
             return_normalized: bool = False,
         ) -> np.ndarray:
-        """Predict the mass, SFR, and redshift of host galaxies from their photometry. Based on the dimensions of 
-        the given photometry, this function will either conduct domain transfer or not.
-        NOTE: 
+        """Infer the mass, SFR, and redshift of host galaxies from either their photometry or coordinates.
+        NOTE:
             (i) All photometry is in units of mJy.
             (ii) This function sets self.host_props to whatever it predicts.
 
         Args:
-            grizy (np.ndarray): Either the grizy (n, 5) or full band photometry for the given galaxies (n, 18) in mJy.
+            ra (np.ndarray): The right ascension of the SNe.
+            dec (np.ndarray): The declination of the SNe.
+            grizy (np.ndarray): The grizy (n, 5) in mJy.
+            redshift (np.ndarray): The redshift of the SNe.
             grizy_err (np.ndarray): Option for the errors on X_grizy. If given, we will resample and take 
                 the median for the properties.
+            redshift_err (Optional[np.ndarray]): Option for the errors on redshift. If given, we will resample
+                and take the median for the properties.
             n_resamples (int): The number of samples we should produce if we are going to resample from the
-                photemetry with its given error.
+                photemetry with its error.
+            return_normalized (bool): Whether to return the properties in normalized form or not.
         Returns:
             1. Stellar mass [log10(solar masses)], SFR [log10(solar masses / yr)], and redshift of the given galaxies
                in an (n, 3) np.ndarray.
@@ -374,9 +366,9 @@ class Splash_Pipeline:
             redshift_err: Optional[np.ndarray] = None,
             n_resamples: int = 10,
         ):
-        """Predict the class of a supernova given its host photometry. Based on the dimensions of the given
-        photometry, this function will either conduct domain transfer or not. Returns -1 if hosts are outside
-        of the train galaxy properties 4 sigma and within_4sigma is True.
+        """Infer the classes of supernovae given their host photometry or coordinates. SNe will first be associated with
+        host galaxies if just the coordinates are given. Returns -1 if hosts are outside of the train galaxy properties
+        4 sigma and within_4sigma is True.
 
         We use the following class labels:
             0=Ia
@@ -387,13 +379,18 @@ class Splash_Pipeline:
             -1=Outside train properties 4 sigma
 
         Args:
-            X_grizy (np.ndarray): Either the grizy (n, 5) or full band photometry for the given galaxies (n, 18).
-            angular_sep (np.ndarray): The angular separations of the SNe from the given galaxies in 
-                arcseconds (n, 1).
-            X_grizy_err (np.ndarray): Option for the errors on X_grizy. If given, we will resample and take 
+            ra (np.ndarray): Right ascension coordinates of the SNe in degrees.
+            dec (np.ndarray): Declination coordinates of the SNe in degrees.
+            grizy (np.ndarray): Host grizy (n, 5).
+            angular_sep (np.ndarray, optional): The angular separations of the SNe from the given galaxies in 
+                arcseconds (n, 1). If not provided, will be calculated from ra/dec.
+            redshift (np.ndarray, optional): Redshifts of the host galaxies. If not provided, will use values
+                from transient catalog.
+            grizy_err (np.ndarray, optional): Errors on the grizy photometry. If given, will resample and take
                 the median for the properties.
-            n_resamples (int): The number of samples we should produce if we are going to resample from the
-                photemetry with its given error.
+            redshift_err (np.ndarray, optional): Errors on the redshifts. Used for resampling if provided.
+            n_resamples (int, optional): The number of samples to produce when resampling from the
+                photometry/redshift with their given errors. Defaults to 10.
         Returns:
             The supernova classes for the given host photometry.
         """
@@ -443,9 +440,8 @@ class Splash_Pipeline:
             redshift_err: Optional[np.ndarray] = None,
             n_resamples: int = 10,
         ) -> Union[np.ndarray, dict]:
-        """Predict the class of a supernova given its host photometry. Based on the dimensions of the given
-        photometry, this function will either conduct domain transfer or not. Returns -1 if hosts are outside
-        of the train galaxy properties 4 sigma and within_4sigma is True.
+        """Infer the probabilities for SNe being each class from either their host photometry or SN coords. Returns -1
+        if hosts are outside of the train galaxy properties 4 sigma and within_4sigma is True.
 
         We use the following class labels:
             0=Ia
@@ -456,15 +452,18 @@ class Splash_Pipeline:
             -1=Outside train properties 4 sigma
 
         Args:
-            X_grizy (np.ndarray): Either the grizy (n, 5) or full band photometry for the given galaxies (n, 18).
-            angular_sep (np.ndarray): The angular separations of the SNe from the given galaxies in 
-                arcseconds (n, 1).
-            X_grizy_err (np.ndarray): Option for the errors on X_grizy. If given, we will resample and take 
+            ra (np.ndarray, optional): Right ascension coordinates of the SNe in degrees.
+            dec (np.ndarray, optional): Declination coordinates of the SNe in degrees.
+            grizy (np.ndarray, optional): The grizy photometry for the given galaxies with shape (n, 5).
+            angular_sep (np.ndarray, optional): The angular separations of the SNe from the given galaxies in
+                arcseconds. If not provided, will be calculated from ra/dec.
+            redshift (np.ndarray, optional): Redshifts of the host galaxies. If not provided, will use values
+                from transient catalog.
+            grizy_err (np.ndarray, optional): Errors on the grizy photometry. If given, will resample and take
                 the median for the properties.
-            n_resamples (int): The number of samples we should produce if we are going to resample from the
-                photemetry with its given error.
-            ovr (bool): If true, return the one-versus-rest probability for each class in the form of a 
-                dictionary.     e.g. {'Ia': 0.9, 'Ib/c': 0.2, ...}
+            redshift_err (np.ndarray, optional): Errors on the redshifts. Used for resampling if provided.
+            n_resamples (int, optional): The number of samples to produce when resampling from the
+                photometry/redshift with their given errors. Defaults to 10.
         Returns:
             The supernova classes for the given host photometry.
         """
@@ -511,7 +510,7 @@ class Splash_Pipeline:
             names: Optional[np.ndarray] = None,
             **kwargs,
         ) -> pd.DataFrame:
-        """Given the RA and DEC of the transients, get the transient catalog using Prost."""
+        """Given the RA and DEC of the transients in degrees, get the transient catalog using Prost."""
         # Check if we have already gotten the catalog for the given inputs
         cat_hash = self._hash_transient_catalog_inputs(ra, dec, redshift, names, kwargs)
         if cat_hash in self._transient_catalog_cache:
