@@ -1,8 +1,9 @@
-import numpy as np
-
-from torch import nn, load
+"""Helper functions for the neural network component of the SPLASH pipeline."""
 from typing import List, Optional
+
+import numpy as np
 from astropy.cosmology import Planck18 as cosmo
+from torch import load, nn
 
 
 def get_model(num_inputs: int, num_outputs: int, nodes_per_layer: List[int], num_linear_output_layers: int = 2) -> nn.Sequential:

@@ -319,6 +319,8 @@ def train_and_store_nn():
     # Load best model
     # resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_no_photozs.pkl')
     resume(model, '/Users/adamboesky/Research/ay98/Weird_Galaxies/host_prop_nn_abs_mag.pkl')
+    with open('/Users/adamboesky/Research/ay98/Weird_Galaxies/Paper/final_train_history.pkl', 'wb') as f:
+        pickle.dump(losses_per_epoch, f)
 
 
     ######################## CHECK RESULTS AND STORE MODEL ########################
