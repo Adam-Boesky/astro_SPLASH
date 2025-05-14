@@ -4,16 +4,16 @@ import hashlib
 import json
 import os
 import pickle
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import pkg_resources
 import sklearn
 import torch
-from astro_prost.associate import associate_sample, prepare_catalog
-from astro_prost.helpers import SnRateAbsmag
-from astropy.coordinates import SkyCoord
+from astro_prost.associate import associate_sample
+from astro_prost.helpers import SnRateAbsmag, fetch_panstarrs_sources
+from astropy.coordinates import SkyCoord, Angle
 from scipy.stats import gamma, halfnorm, uniform
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import KNNImputer, MissingIndicator
@@ -295,6 +295,11 @@ class Splash_Pipeline:
             # Transform mag -> mJy
             grizy, grizy_err = ab_mag_to_flux(grizy, magerr=grizy_err)
 
+            # Get the mask for the rows that had no hosts
+            no_host_mask = np.isnan(self.transient_catalog['host_ra'])
+        else:
+            no_host_mask = np.zeros(grizy.shape[0], dtype=bool)
+
         # If grizy is not given, raise an error
         if grizy is None:
             raise ValueError('Please provide the grizy photometry of the galaxies.')
@@ -342,10 +347,10 @@ class Splash_Pipeline:
             host_props_norm = self.property_predicting_net(torch.from_numpy(X)).detach().numpy()
             host_props_err_norm = None
 
-        # Fill in the rows that had too many nans
-        host_props_norm[too_nan_mask] = np.nan
+        # Fill in the rows that had too many nans or had no hosts
+        host_props_norm[too_nan_mask | no_host_mask] = np.nan
         if host_props_err_norm is not None:
-            host_props_err_norm[too_nan_mask] = np.nan
+            host_props_err_norm[too_nan_mask | no_host_mask] = np.nan
 
         # Inverse transform the properties
         self.host_props, self.host_props_err = self._inverse_transform_properties(host_props_norm, X_err=host_props_err_norm)
@@ -377,7 +382,7 @@ class Splash_Pipeline:
             3=IIn
             4=II (P/L)
             -1=Outside train properties 4 sigma
-
+            -2=No host found
         Args:
             ra (np.ndarray): Right ascension coordinates of the SNe in degrees.
             dec (np.ndarray): Declination coordinates of the SNe in degrees.
@@ -421,11 +426,18 @@ class Splash_Pipeline:
         # in order: (log10(angular separation), mass, SFR, redshift)
         host_props = np.hstack((np.log10(angular_sep.reshape(-1, 1)), self.host_props, redshift.reshape(-1, 1)))
 
+        # Get a mask for the sources that have no host
+        if (ra is not None) and (dec is not None) and (grizy is None) and (grizy_err is None): 
+            no_host_mask = np.isnan(self.transient_catalog['host_ra'])
+        else:
+            no_host_mask = np.zeros(host_props.shape[0], dtype=bool)
+
         # Get the classes
-        classes = self.random_forest.predict(host_props)
+        classes = np.zeros(host_props.shape[0], dtype=int) - 2
+        classes[~no_host_mask] = self.random_forest.predict(host_props[~no_host_mask])
         if self.within_4sigma:
             within_training_mask = np.all((host_props_norm < 4) & (host_props_norm > -4), axis=1)  # hosts within 4 sigma of training data
-            classes[~within_training_mask] = -1
+            classes[(~within_training_mask) & (~no_host_mask)] = -1
 
         return classes
 
@@ -502,6 +514,46 @@ class Splash_Pipeline:
 
         return all_probs
 
+    def get_panstarrs_photometry(
+            self,
+            ra: Iterable[float],
+            dec: Iterable[float],
+            query_radius_arcsec: float = 1.0,
+        ) -> pd.DataFrame:
+        """Get the photometry for the given RA and DEC from Panstarrs."""
+        # Set up the photometry dataframe
+        photo_cols = ['gKronMag', 'rKronMag', 'iKronMag', 'zKronMag', 'yKronMag', 'gKronMagErr', 'rKronMagErr',
+                      'iKronMagErr', 'zKronMagErr', 'yKronMagErr']
+        pstarr_photo_df = pd.DataFrame(columns=photo_cols)
+
+        # Get the photometry for each coordinate and append to the dataframe
+        coords = SkyCoord(ra, dec, unit='deg')
+        search_rad = Angle(query_radius_arcsec, unit='arcsec')
+        for coord in coords:
+
+            # If the coordinate is nan, append a row of nans
+            if np.isnan(coord.ra) or np.isnan(coord.dec):
+                pstarr_photo_df = pd.concat([pstarr_photo_df, pd.DataFrame(data={col: [np.nan] for col in photo_cols})])
+                continue
+
+            # Get the photometry and append to the dataframe
+            pstarr_photo_df = fetch_panstarrs_sources(
+                coord,
+                search_rad,
+                cat_cols=True,
+                calc_host_props=[],
+                release='dr2',
+            )
+            if pstarr_photo_df is None:
+                pstarr_photo_df = pd.concat([pstarr_photo_df, pd.DataFrame(data={col: [np.nan] for col in photo_cols})])
+            else:
+                pstarr_photo_df = pd.concat([pstarr_photo_df, pstarr_photo_df.iloc[0:1]])
+
+        # Replace negative fluxes with nans
+        pstarr_photo_df.replace(-999, np.nan, inplace=True).reset_index(drop=True, inplace=True)
+
+        return pstarr_photo_df
+
     def get_transient_catalog(
             self,
             ra: np.ndarray,
@@ -522,38 +574,61 @@ class Splash_Pipeline:
         priorfunc_absmag = uniform(loc=-30, scale=20)
         likefunc_offset = gamma(a=0.75)
         likefunc_absmag = SnRateAbsmag(a=-25, b=20)
-        priors = {"offset": priorfunc_offset, "absmag": priorfunc_absmag, "z": priorfunc_z}
+        priors = {"offset": priorfunc_offset, "absmag": priorfunc_absmag, "redshift": priorfunc_z}
         likes = {"offset": likefunc_offset, "absmag": likefunc_absmag}
 
         if names is None:
             names = [f'SN{i}' for i in range(len(ra))]
 
         # Set up the catalog
-        transient_catalog = pd.DataFrame(data={
+        transient_catalog_no_hosts = pd.DataFrame(data={
             'name': names,  # arbitrary names
             'RA': ra,
             'DEC': dec,
         })
         if redshift is not None:
-            transient_catalog['redshift'] = redshift
-        print('Preparing the catalog!')
-        transient_catalog = prepare_catalog(
-            transient_catalog, transient_name_col='name', transient_coord_cols=('RA', 'DEC')
-        )
+            transient_catalog_no_hosts['redshift'] = redshift
 
         # Associate the sample
         print('Associating the catalog!')
         transient_catalog: pd.DataFrame = associate_sample(
-            transient_catalog,
+            transient_catalog_no_hosts,
+            name_col='name',
+            redshift_col='redshift',
+            coord_cols=('RA', 'DEC'),
             priors=priors,
             likes=likes,
-            catalogs=['panstarrs'],
+            catalogs=['glade', 'decals'],
             save=False,
             verbose=0,
             **kwargs,
         )
 
-        # Reorder the catalog
+        # Query panstarrs for the photometry
+        panstarrs_photo_df = self.get_panstarrs_photometry(
+            transient_catalog['host_ra'],
+            transient_catalog['host_dec'],
+            query_radius_arcsec=1.0,
+        )
+
+        # Merge the photometry with the transient catalog
+        transient_catalog = pd.merge(
+            transient_catalog,
+            panstarrs_photo_df,
+            how='left',
+            left_index=True,
+            right_index=True,
+        )
+
+        # Make sure all the names are in the catalog
+        transient_catalog = pd.merge(
+            transient_catalog_no_hosts,
+            transient_catalog,
+            on='name',
+            how='left'
+        )
+
+        # Reorder the catalog by the initial order of input names
         transient_catalog = transient_catalog.set_index('name', drop=True).loc[names].reset_index(drop=True)
 
         # Cache the catalog
