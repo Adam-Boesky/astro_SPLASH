@@ -256,6 +256,7 @@ class Splash_Pipeline:
             redshift_err: Optional[np.ndarray] = None,
             n_resamples: int = 10,
             return_normalized: bool = False,
+            return_no_host_mask: bool = False,
         ) -> np.ndarray:
         """Infer the mass, SFR, and redshift of host galaxies from either their photometry or coordinates.
         NOTE:
@@ -296,7 +297,8 @@ class Splash_Pipeline:
             grizy, grizy_err = ab_mag_to_flux(grizy, magerr=grizy_err)
 
             # Get the mask for the rows that had no hosts
-            no_host_mask = np.isnan(self.transient_catalog['host_ra'])
+            no_host_mask = self.transient_catalog['best_cat'].isna()
+            no_host_mask |= np.isnan(grizy).all(axis=1)
         else:
             no_host_mask = np.zeros(grizy.shape[0], dtype=bool)
 
@@ -356,9 +358,11 @@ class Splash_Pipeline:
         self.host_props, self.host_props_err = self._inverse_transform_properties(host_props_norm, X_err=host_props_err_norm)
 
         if return_normalized:
-            return host_props_norm, host_props_err_norm
+            if return_no_host_mask:
+                return host_props_norm, host_props_err_norm, no_host_mask
         else:
-            return self.host_props, self.host_props_err
+            if return_no_host_mask:
+                return self.host_props, self.host_props_err, no_host_mask
 
     def infer_classes(
             self,
@@ -400,7 +404,7 @@ class Splash_Pipeline:
             The supernova classes for the given host photometry.
         """
         # Get the host props
-        host_props_norm, _ = self.infer_host_properties(
+        host_props_norm, _, no_host_mask = self.infer_host_properties(
             ra=ra,
             dec=dec,
             grizy=grizy,
@@ -409,6 +413,7 @@ class Splash_Pipeline:
             redshift_err=redshift_err,
             n_resamples=n_resamples,
             return_normalized=True,
+            return_no_host_mask=True,
         )
 
         # Get the angular separations and redshifts if not given
@@ -425,12 +430,6 @@ class Splash_Pipeline:
 
         # in order: (log10(angular separation), mass, SFR, redshift)
         host_props = np.hstack((np.log10(angular_sep.reshape(-1, 1)), self.host_props, redshift.reshape(-1, 1)))
-
-        # Get a mask for the sources that have no host
-        if (ra is not None) and (dec is not None) and (grizy is None) and (grizy_err is None): 
-            no_host_mask = np.isnan(self.transient_catalog['host_ra'])
-        else:
-            no_host_mask = np.zeros(host_props.shape[0], dtype=bool)
 
         # Get the classes
         classes = np.zeros(host_props.shape[0], dtype=int) - 2
@@ -480,7 +479,7 @@ class Splash_Pipeline:
             The supernova classes for the given host photometry.
         """
         # Get the host props
-        host_props_norm, _ = self.infer_host_properties(
+        host_props_norm, _, no_host_mask = self.infer_host_properties(
             ra=ra,
             dec=dec,
             grizy=grizy,
@@ -489,6 +488,7 @@ class Splash_Pipeline:
             redshift_err=redshift_err,
             n_resamples=n_resamples,
             return_normalized=True,
+            return_no_host_mask=True,
         )
 
         # Get the angular separations and redshifts if not given
@@ -507,7 +507,8 @@ class Splash_Pipeline:
         host_props = np.hstack((np.log10(angular_sep.reshape(-1, 1)), self.host_props, redshift.reshape(-1, 1)))
 
         # Get the class probabilities
-        all_probs = self.random_forest.predict_proba(host_props)
+        all_probs = np.zeros((host_props.shape[0], 5)) * np.nan
+        all_probs[~no_host_mask] = self.random_forest.predict_proba(host_props[~no_host_mask])
         if self.within_4sigma:
             within_training_mask = np.all((host_props_norm < 4) & (host_props_norm > -4), axis=1)
             all_probs[~within_training_mask] = np.nan
@@ -537,20 +538,22 @@ class Splash_Pipeline:
                 continue
 
             # Get the photometry and append to the dataframe
-            pstarr_photo_df = fetch_panstarrs_sources(
+            new_src_df = fetch_panstarrs_sources(
                 coord,
                 search_rad,
                 cat_cols=True,
                 calc_host_props=[],
                 release='dr2',
             )
-            if pstarr_photo_df is None:
+            if new_src_df is None:
                 pstarr_photo_df = pd.concat([pstarr_photo_df, pd.DataFrame(data={col: [np.nan] for col in photo_cols})])
             else:
-                pstarr_photo_df = pd.concat([pstarr_photo_df, pstarr_photo_df.iloc[0:1]])
+                pstarr_photo_df = pd.concat([pstarr_photo_df, new_src_df[photo_cols].iloc[0:1]])
 
         # Replace negative fluxes with nans
-        pstarr_photo_df.replace(-999, np.nan, inplace=True).reset_index(drop=True, inplace=True)
+        if pstarr_photo_df is not None:
+            pstarr_photo_df.replace(-999, np.nan, inplace=True)
+            pstarr_photo_df.reset_index(drop=True, inplace=True)
 
         return pstarr_photo_df
 
