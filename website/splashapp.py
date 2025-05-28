@@ -371,7 +371,7 @@ def run_splash(sn_db):
 def create_html():
     clean_stuff()
     sn_db = run_TNS()
-    sn_db = sn_db[-3:].reset_index(drop=True)
+    #sn_db = sn_db[-3:].reset_index(drop=True)
 
     # sn_db = run_alerce() # Removed following suggestion from Alerce
 
