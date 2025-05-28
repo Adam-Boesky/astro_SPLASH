@@ -283,12 +283,29 @@ class Splash_Pipeline:
         if (ra is not None) and (dec is not None) and (grizy is None) and (grizy_err is None):
             # If ra and dec are given, use Prost to get the host photometry
             transient_catalog = self.get_transient_catalog(ra, dec, redshift=redshift, cat_cols=True, calc_host_props=True)
+
+
+            def choose_column(name, df):
+                if f"{name}_y" in df.columns and not df[f"{name}_y"].isnull().all():
+                    return f"{name}_y"
+                elif f"{name}_x" in df.columns:
+                    return f"{name}_x"
+                elif name in df.columns:
+                    return name
+                else:
+                    raise KeyError(f"Could not find {name} in DataFrame")
+
             grizy = transient_catalog[
-                ['gKronMag', 'rKronMag', 'iKronMag', 'zKronMag', 'yKronMag']
+                [choose_column(f"{f}KronMag", transient_catalog) for f in ['g', 'r', 'i', 'z', 'y']]
             ].to_numpy()
+
             grizy_err = transient_catalog[
-                ['gKronMagErr', 'rKronMagErr', 'iKronMagErr', 'zKronMagErr', 'yKronMagErr']
+                [choose_column(f"{f}KronMagErr", transient_catalog) for f in ['g', 'r', 'i', 'z', 'y']]
             ].to_numpy()
+
+
+
+
             if redshift is None:
                 redshift = transient_catalog['host_redshift_mean'].to_numpy()
                 redshift_err = transient_catalog['host_redshift_std'].to_numpy()
@@ -298,6 +315,8 @@ class Splash_Pipeline:
 
             # Get the mask for the rows that had no hosts
             no_host_mask = self.transient_catalog['best_cat'].isna()
+            grizy = grizy.astype(float)
+
             no_host_mask |= np.isnan(grizy).all(axis=1)
         else:
             no_host_mask = np.zeros(grizy.shape[0], dtype=bool)
@@ -594,6 +613,7 @@ class Splash_Pipeline:
 
         # Associate the sample
         print('Associating the catalog!')
+
         transient_catalog: pd.DataFrame = associate_sample(
             transient_catalog_no_hosts,
             name_col='name',
@@ -601,7 +621,7 @@ class Splash_Pipeline:
             coord_cols=('RA', 'DEC'),
             priors=priors,
             likes=likes,
-            catalogs=['glade', 'decals'],
+            catalogs=['glade', 'decals','panstarrs'],
             save=False,
             verbose=0,
             **kwargs,
@@ -611,7 +631,7 @@ class Splash_Pipeline:
         panstarrs_photo_df = self.get_panstarrs_photometry(
             transient_catalog['host_ra'],
             transient_catalog['host_dec'],
-            query_radius_arcsec=1.0,
+            query_radius_arcsec=3.0,
         )
 
         # Merge the photometry with the transient catalog
