@@ -319,6 +319,8 @@ class Splash_Pipeline:
 
             no_host_mask |= np.isnan(grizy).all(axis=1)
         else:
+            if grizy.shape[1] != 5:
+                raise ValueError(f'Input grizy dimensions are {X.shape} when they should be (n, 5).')
             no_host_mask = np.zeros(grizy.shape[0], dtype=bool)
 
         # If grizy is not given, raise an error
@@ -338,8 +340,6 @@ class Splash_Pipeline:
 
         # Check nans and grizy dimensions
         too_nan_mask = self._get_too_nan_rows(X)
-        if grizy.shape[1] != 5:
-            raise ValueError(f'Input grizy dimensions are {X.shape} when they should be (n, 5).')
 
         # Preprocess the data
         if X_err is None:
@@ -379,9 +379,13 @@ class Splash_Pipeline:
         if return_normalized:
             if return_no_host_mask:
                 return host_props_norm, host_props_err_norm, no_host_mask
+            else:
+                return host_props_norm, host_props_err_norm
         else:
             if return_no_host_mask:
                 return self.host_props, self.host_props_err, no_host_mask
+            else:
+                return self.host_props, self.host_props_err
 
     def infer_classes(
             self,

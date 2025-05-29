@@ -18,3 +18,4 @@ dist/
 *transients_*/
 sfddata-master/
 testing.ipynb
+*.ipynb_checkpoints/
