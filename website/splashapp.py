@@ -193,7 +193,6 @@ def run_TNS():
     three_days_ago = datetime.today() - timedelta(days=10)
     three_days_ago_date = three_days_ago.strftime('%Y-%m-%d')
 
-
     url = 'https://www.wis-tns.org/search?&reporting_groupid%5B%5D=74&at_type%5B%5D=1&date_start%5Bdate%5D=' + three_days_ago_date
 
     #hack
@@ -227,7 +226,7 @@ def run_TNS():
         db_rows.append((name, internal_name, ra_deg, dec_deg))
 
     SNe = pd.DataFrame(db_rows, columns=['oid', 'internal-name', 'meanra', 'meandec'])
-    return SNe
+    return SNe, three_days_ago_date  # Return both the data and the date
 
 
 
@@ -370,7 +369,7 @@ def run_splash(sn_db):
 # Main function to create the HTML file
 def create_html():
     clean_stuff()
-    sn_db = run_TNS()
+    sn_db, tns_date = run_TNS()  # Get both the data and the date
     #sn_db = sn_db[-3:].reset_index(drop=True)
 
     # sn_db = run_alerce() # Removed following suggestion from Alerce
@@ -400,6 +399,13 @@ def create_html():
                         color: #8a100b;
                         font-size: 2.8em;
                         margin-bottom: 30px;
+                    }}
+                    .date-info {{
+                        text-align: center;
+                        color: #555;
+                        font-size: 1.1em;
+                        margin-bottom: 20px;
+                        font-style: italic;
                     }}
                     table {{
                         width: 100%;
@@ -451,6 +457,9 @@ def create_html():
             </head>
             <body>
                 <h1>Supernova Classification Results</h1>
+                <div class="date-info">
+                    Data from TNS starting from {tns_date} | Generated on {date}
+                </div>
                 <table>
                     <tr>
                         <th>Supernova Name</th>
@@ -498,7 +507,7 @@ def create_html():
         rows += f'<td>{img_html}</td></tr>'
 
     # Render the HTML content
-    html_content = html_template.format(rows=rows, date=current_date, version=splash_version, github=github_link)
+    html_content = html_template.format(rows=rows, date=current_date, tns_date=tns_date, version=splash_version, github=github_link)
 
     # Write the HTML content to a file
     with open('splash.html', 'w') as f:
