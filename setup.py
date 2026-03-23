@@ -18,7 +18,7 @@ setup(
         'numpy',
         'scikit-learn>=0.22.0',
         'pooch',
-        'astro-prost>=1.2.6',
+        'astro-prost>=1.2.6,<=1.2.12',
         ],
     include_package_data=True
 )
